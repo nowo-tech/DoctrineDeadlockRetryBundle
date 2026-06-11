@@ -10,7 +10,7 @@ namespace Nowo\DoctrineDeadlockRetryBundle\Config;
  * @author Héctor Franco Aceituno <hectorfranco@nowo.tech>
  * @copyright 2026 Nowo.tech
  */
-final class RetryProfile
+final readonly class RetryProfile
 {
     /**
      * @param string $name Profile identifier
@@ -19,10 +19,10 @@ final class RetryProfile
      * @param bool $rollbackOnDeadlock Whether to roll back before retrying
      */
     public function __construct(
-        public readonly string $name,
-        public readonly int $maxRetries,
-        public readonly int $sleepMs,
-        public readonly bool $rollbackOnDeadlock = true,
+        public string $name,
+        public int $maxRetries,
+        public int $sleepMs,
+        public bool $rollbackOnDeadlock = true,
     ) {
     }
 

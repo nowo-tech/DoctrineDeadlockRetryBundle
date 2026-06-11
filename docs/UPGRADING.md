@@ -1,14 +1,26 @@
 # Upgrading
 
-## To 1.0.1
+## To 2.0.0
 
-Patch release; no configuration or API changes.
+Requires **PHP 8.2 or newer**. No configuration or public API changes beyond the platform requirement.
 
 ```bash
 composer update nowo-tech/doctrine-deadlock-retry-bundle
 ```
 
-If you are on **PHP 8.1** and saw a parse error loading `RetryProfile`, upgrade to 1.0.1 or newer.
+If you must stay on **PHP 8.1**, pin **1.0.1**:
+
+```bash
+composer require nowo-tech/doctrine-deadlock-retry-bundle:^1.0.1
+```
+
+## To 1.0.1
+
+Patch release; no configuration or API changes (supports PHP 8.1).
+
+```bash
+composer update nowo-tech/doctrine-deadlock-retry-bundle
+```
 
 ## To 1.0.0
 

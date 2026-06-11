@@ -4,7 +4,8 @@
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 1.x     | :white_check_mark: |
+| 2.x     | :white_check_mark: |
+| 1.x     | :white_check_mark: (security fixes only; use 2.x on PHP 8.2+) |
 
 ## Reporting a Vulnerability
 
