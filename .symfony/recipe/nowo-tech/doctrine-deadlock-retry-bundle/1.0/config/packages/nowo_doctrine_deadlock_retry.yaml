@@ -1,0 +1,7 @@
+nowo_doctrine_deadlock_retry:
+    default_profile: default
+    profiles:
+        default:
+            max_retries: 3
+            sleep_ms: 100
+            rollback_on_deadlock: true

@@ -1,0 +1,6 @@
+# CODEOWNERS for DoctrineDeadlockRetryBundle
+* @HecFranco
+/.github/ @HecFranco
+/src/ @HecFranco
+/tests/ @HecFranco
+/.scripts/ @HecFranco

@@ -1,0 +1,44 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Doctrine Deadlock Retry Bundle - Demo - {{ version_badge }}{% endblock %}
+
+{% block body %}
+    <h1>Doctrine Deadlock Retry Bundle – Demo</h1>
+    <p><span class="badge">{{ version_badge }}</span></p>
+
+    <section>
+        <h2>Flush with retry</h2>
+        <p>Each page load persists a <code>DemoNote</code> and calls <code>DeadlockRetryService::flush()</code> (default profile).</p>
+        <p><strong>Latest saved:</strong> <code>#{{ latest_note.id }} — {{ latest_note.title }}</code></p>
+        <p><strong>Configured profiles:</strong> {{ profiles|join(', ') }}</p>
+    </section>
+
+    <section>
+        <h2>Recent notes</h2>
+        {% if notes is empty %}
+            <p>No notes yet.</p>
+        {% else %}
+            <table>
+                <thead>
+                    <tr><th>ID</th><th>Title</th><th>Created</th></tr>
+                </thead>
+                <tbody>
+                    {% for note in notes %}
+                    <tr>
+                        <td>{{ note.id }}</td>
+                        <td>{{ note.title }}</td>
+                        <td>{{ note.createdAt|date('Y-m-d H:i:s') }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% endif %}
+    </section>
+
+    <section>
+        <h2>Usage in your app</h2>
+        <pre><code>$this->entityManager->persist($entity);
+$this->deadlockRetry->flush();
+$this->deadlockRetry->flush('batch');</code></pre>
+    </section>
+{% endblock %}

@@ -1,0 +1,8 @@
+{
+    "bundles": {
+        "Nowo\\DoctrineDeadlockRetryBundle\\NowoDoctrineDeadlockRetryBundle": ["all"]
+    },
+    "copy": {
+        "config/packages/nowo_doctrine_deadlock_retry.yaml": "%CONFIG_DIR%/packages/nowo_doctrine_deadlock_retry.yaml"
+    }
+}
