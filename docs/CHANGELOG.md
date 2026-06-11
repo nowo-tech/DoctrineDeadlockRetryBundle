@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-06-11
+
+### Fixed
+
+- `RetryProfile` no longer uses `readonly class` (PHP 8.2+ syntax); promoted properties are `readonly` instead so the bundle loads on PHP 8.1 as documented.
+
 ## [1.0.0] - 2026-05-20
 
 ### Added
@@ -22,4 +28,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Installation, configuration, usage, security, upgrading, and FrankenPHP demo guides.
 
+[1.0.1]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v1.0.1
 [1.0.0]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v1.0.0
