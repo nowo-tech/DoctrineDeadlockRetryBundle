@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-07-09
+
+### Changed
+
+- Internal exception-chain detection in `DeadlockRetryService` (no public API change).
+- Dev dependency updates in `composer.lock`.
+
+### Added
+
+- CodeRabbit configuration and GitHub Actions workflow.
+- GitHub Spec Kit documentation and spec-driven development tooling.
+
+### Documentation
+
+- Expanded release security checklist in [SECURITY.md](SECURITY.md).
+- README badges (GitHub stars, coverage).
+- [SPEC-KIT.md](SPEC-KIT.md) guide.
+
 ## [2.0.0] - 2026-06-11
 
 ### Changed
@@ -40,6 +58,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Installation, configuration, usage, security, upgrading, and FrankenPHP demo guides.
 
+[2.0.1]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v2.0.1
 [2.0.0]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v2.0.0
 [1.0.1]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v1.0.1
 [1.0.0]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v1.0.0

@@ -116,7 +116,7 @@ final class DeadlockRetryServiceTest extends TestCase
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('other');
 
-        $service->retry(static function (): void {
+        $service->retry(static function (): never {
             throw new RuntimeException('other');
         });
     }
