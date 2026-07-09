@@ -154,7 +154,7 @@ final class DeadlockRetryService
 
             $previous = $current->getPrevious();
 
-            if ($previous === null) {
+            if (!$previous instanceof Throwable) {
                 return false;
             }
 

@@ -1,5 +1,13 @@
 # Upgrading
 
+## To 2.0.1
+
+Patch release; no configuration or public API changes.
+
+```bash
+composer update nowo-tech/doctrine-deadlock-retry-bundle
+```
+
 ## To 2.0.0
 
 Requires **PHP 8.2 or newer**. No configuration or public API changes beyond the platform requirement.

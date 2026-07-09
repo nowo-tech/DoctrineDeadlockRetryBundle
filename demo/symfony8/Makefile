@@ -85,4 +85,6 @@ verify:
 	if [ "$$code" = "200" ]; then echo "OK (HTTP $$code)"; else echo "Failed (HTTP $$code)"; exit 1; fi
 
 # REQ-MAKE-008: update-deps (REQ-MAKE-008)
+COMPOSE := docker-compose
+SERVICE_PHP := php
 include $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../../../.scripts/Makefile.demo-update-deps.mk
