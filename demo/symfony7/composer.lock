@@ -939,7 +939,7 @@
             "dist": {
                 "type": "path",
                 "url": "/var/doctrine-deadlock-retry-bundle",
-                "reference": "1b3141d58d1aecff0c7a528cd56202ca5f07dcd4"
+                "reference": "220b8b51c4f3918b6c221956b3ea76d5c6ce44b7"
             },
             "require": {
                 "doctrine/dbal": "^3.8.2 || ^4.0",
