@@ -16,9 +16,19 @@ Report security issues via GitHub Security Advisories on [DoctrineDeadlockRetryB
 
 ## Release security checklist (12.4.1)
 
-Before tagging a release:
+Before tagging a release, confirm:
 
-- [ ] No credentials or tokens in the repository or default config.
-- [ ] Dependencies reviewed (`composer update` / Dependabot).
-- [ ] Tests and static analysis pass in CI.
-- [ ] [CHANGELOG.md](CHANGELOG.md) documents security-relevant changes if any.
+| Item | Notes |
+|------|--------|
+| **SECURITY.md** | This document is current and linked from the README where applicable. |
+| **`.gitignore` and `.env`** | `.env` and local env files are ignored; no committed secrets. |
+| **No secrets in repo** | No API keys, passwords, or tokens in tracked files. |
+| **Recipe / Flex** | Default recipe or installer templates do not ship production secrets. |
+| **Input / output** | Retry configuration bounded; handlers must not log sensitive SQL/entity data. |
+| **Dependencies** | `composer audit` run; issues triaged. |
+| **Logging** | Custom deadlock handlers reviewed for PII and query leakage. |
+| **Cryptography** | N/A — no custom cryptography in this bundle. |
+| **Permissions / exposure** | No HTTP routes; service used only by application code. |
+| **Limits / DoS** | `max_retries` and `sleep_ms` appropriate for production latency budgets. |
+
+Record confirmation in the release PR or tag notes.

@@ -42,7 +42,6 @@ up:
 	$(COMPOSE) build
 	$(COMPOSE) up -d
 	@echo "Installing dependencies..."
-	$(COMPOSE) exec -T $(SERVICE_PHP) composer config --unset platform.php 2>/dev/null || true
 	$(COMPOSE) exec -T $(SERVICE_PHP) composer install --no-interaction
 	@echo "Container ready."
 
@@ -53,7 +52,6 @@ shell:
 	$(COMPOSE) exec $(SERVICE_PHP) sh
 
 install: ensure-up
-	$(COMPOSE) exec -T $(SERVICE_PHP) composer config --unset platform.php 2>/dev/null || true
 	$(COMPOSE) exec -T $(SERVICE_PHP) composer install
 	@echo "Dependencies installed."
 
@@ -91,7 +89,6 @@ qa: ensure-up
 	$(COMPOSE) exec -T $(SERVICE_PHP) composer qa
 
 update: ensure-up
-	$(COMPOSE) exec -T $(SERVICE_PHP) composer config --unset platform.php 2>/dev/null || true
 	$(COMPOSE) exec -T $(SERVICE_PHP) composer update --no-interaction
 
 validate: ensure-up
@@ -103,7 +100,6 @@ release-check-demos:
 	@$(MAKE) -C demo release-verify
 
 composer-sync: ensure-up
-	$(COMPOSE) exec -T $(SERVICE_PHP) composer config --unset platform.php 2>/dev/null || true
 	$(COMPOSE) exec -T $(SERVICE_PHP) composer validate --strict
 	$(COMPOSE) exec -T $(SERVICE_PHP) composer update --no-install
 
@@ -115,4 +111,4 @@ assets:
 
 # REQ-MAKE-008: update-deps (REQ-MAKE-008)
 BUNDLE_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
-include $(BUNDLE_ROOT)/.scripts/Makefile.update-deps.mk
+include $(BUNDLE_ROOT)/../.scripts/Makefile.update-deps.mk
