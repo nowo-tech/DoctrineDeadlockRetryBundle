@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [2.0.2] - 2026-07-20
+
+### Added
+
+- Code of Conduct ([CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md)).
+- Git hygiene tooling (REQ-GIT-001): `.githooks/commit-msg`, `make setup-hooks`, `make check-no-cursor-coauthor`, and CI job `git-hygiene`.
+- [GITHUB_CI.md](GITHUB_CI.md) documenting CI requirements for commit history.
+
+### Changed
+
+- Demo dependency locks and Makefile paths for update-deps targets.
+- Dev dependency updates in `composer.lock`.
+
+### Documentation
+
+- Contributing: Code of Conduct and git hooks setup.
+- Release: re-run `make check-no-cursor-coauthor` after tagging, before push.
+- README links to GITHUB_CI and Code of Conduct.
+
 ## [2.0.1] - 2026-07-09
 
 ### Changed
@@ -58,6 +77,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Installation, configuration, usage, security, upgrading, and FrankenPHP demo guides.
 
+[2.0.2]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v2.0.2
 [2.0.1]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v2.0.1
 [2.0.0]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v2.0.0
 [1.0.1]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v1.0.1

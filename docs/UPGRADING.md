@@ -1,5 +1,15 @@
 # Upgrading
 
+## To 2.0.2
+
+Patch release; no configuration or public API changes.
+
+```bash
+composer update nowo-tech/doctrine-deadlock-retry-bundle
+```
+
+Contributors: run `make setup-hooks` once per clone (REQ-GIT-001). See [Contributing](CONTRIBUTING.md) and [GITHUB_CI.md](GITHUB_CI.md).
+
 ## To 2.0.1
 
 Patch release; no configuration or public API changes.
