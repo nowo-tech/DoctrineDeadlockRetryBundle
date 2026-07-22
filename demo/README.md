@@ -45,6 +45,16 @@ Each demo includes:
 - Symfony Framework, Twig, Web Profiler, Doctrine ORM (SQLite)
 - **nowo-tech/doctrine-deadlock-retry-bundle** (from path)
 - **nowo-tech/twig-inspector-bundle** (dev/test)
-- FrankenPHP (Caddyfile :80; worker mode in production Caddyfile)
+- FrankenPHP (Caddyfile :80; **`FRANKENPHP_MODE=worker`** by default; set `classic` for per-request PHP)
+
+## FrankenPHP mode
+
+In each demo’s `.env` / `.env.example`:
+
+```env
+FRANKENPHP_MODE=worker
+```
+
+Use `classic` for hot-reload without workers. After changing the value, recreate the container (`docker compose up -d` / `make up`) — a plain restart does not reload env. See [DEMO-FRANKENPHP.md](../docs/DEMO-FRANKENPHP.md).
 
 The home page persists a `DemoNote` entity using `DeadlockRetryService::flush()` so you can verify the bundle wiring without simulating a real deadlock.

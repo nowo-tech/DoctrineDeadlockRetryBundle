@@ -1,5 +1,15 @@
 # Upgrading
 
+## To 2.0.3
+
+Patch release; no configuration or public API changes. Demo-only: FrankenPHP mode is now selected with `FRANKENPHP_MODE` in each demo `.env` (default `worker`).
+
+```bash
+composer update nowo-tech/doctrine-deadlock-retry-bundle
+```
+
+If you run the bundled demos, copy the new `FRANKENPHP_MODE` keys from `.env.example` into your local `.env` and recreate containers after changing the mode (`docker compose up -d`).
+
 ## To 2.0.2
 
 Patch release; no configuration or public API changes.

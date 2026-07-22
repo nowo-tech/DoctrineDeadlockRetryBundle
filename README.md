@@ -39,7 +39,7 @@ Symfony bundle that retries `EntityManager::flush()` and custom operations when 
 ### Additional documentation
 
 - [Demo (Symfony 7 & 8)](demo/README.md) — run `make -C demo up-symfony8` from the bundle root.
-- [Demo with FrankenPHP (development and production)](docs/DEMO-FRANKENPHP.md) — includes FrankenPHP **worker mode** for production demos.
+- [Demo with FrankenPHP](docs/DEMO-FRANKENPHP.md) — `FRANKENPHP_MODE` (`classic` \| `worker`, default **worker**).
 
 ## Quick example
 
