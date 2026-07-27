@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [2.0.4] - 2026-07-27
+
+### Fixed
+
+- Symfony 8 demo: WebProfiler routing resources use `.php` instead of removed `.xml` files.
+- Demos pin `DATABASE_URL` to SQLite in Compose (avoid Flex postgres override without `pdo_pgsql`), drop unused Postgres service, and remove `compose.override.yaml` port publish (REQ-DEMO-006).
+
+### Added
+
+- FrankenPHP Friendly Worker Mode banner in README and `docs/images/frankenphp-friendly.png` (REQ-DOCS-017), gated on PHPStan FrankenPHP rules.
+- Dev dependency `nowo-tech/phpstan-frankenphp` with classic + worker rulesets in `phpstan.neon.dist` (REQ-CS-005).
+- `make down-dev` and `make check-open-prs` (wired into `release-check`) for REQ-MAKE-007 / REQ-REL-003.
+
+### Changed
+
+- `Configuration` and `NowoDoctrineDeadlockRetryExtension` are `final`.
+- Demo `.env.example` files document each variable; demo `.gitignore` ignores `/.pnpm-store`.
+- Removed committed demo `.env.dev`; demos rely on `.env.example` only (REQ-DEMO-003 / REQ-ENV-001).
+- Dev and runtime dependency updates in `composer.lock` (phpstan, php-cs-fixer, rector, doctrine/dbal).
+
+### Documentation
+
+- UPGRADING notes for 2.0.4.
+- RELEASE checklist mentions `check-open-prs` before tagging.
+
 ## [2.0.3] - 2026-07-22
 
 ### Added
@@ -92,6 +117,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Installation, configuration, usage, security, upgrading, and FrankenPHP demo guides.
 
+[2.0.4]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v2.0.4
 [2.0.3]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v2.0.3
 [2.0.2]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v2.0.2
 [2.0.1]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v2.0.1

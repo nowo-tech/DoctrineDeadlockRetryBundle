@@ -21,7 +21,7 @@ use function sprintf;
  * @author Héctor Franco Aceituno <hectorfranco@nowo.tech>
  * @copyright 2026 Nowo.tech
  */
-class NowoDoctrineDeadlockRetryExtension extends Extension
+final class NowoDoctrineDeadlockRetryExtension extends Extension
 {
     /**
      * @param array<int, array<string, mixed>> $configs

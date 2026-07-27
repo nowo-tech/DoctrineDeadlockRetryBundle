@@ -1,5 +1,20 @@
 # Upgrading
 
+## To 2.0.4
+
+Patch release; no configuration or public API changes for application code.
+
+```bash
+composer update nowo-tech/doctrine-deadlock-retry-bundle
+```
+
+Maintainers / demo runners:
+
+- Prefer `.env.example` over any local `.env.dev` (do not commit `.env.dev`).
+- Demos use **SQLite** only; do not rely on Flex-generated Postgres `DATABASE_URL` / `compose.override.yaml`.
+- `make release-check` now fails if unresolved open GitHub PRs remain (`make check-open-prs`).
+- Package QA uses `nowo-tech/phpstan-frankenphp` in **require-dev** only (not a consumer dependency).
+
 ## To 2.0.3
 
 Patch release; no configuration or public API changes. Demo-only: FrankenPHP mode is now selected with `FRANKENPHP_MODE` in each demo `.env` (default `worker`).

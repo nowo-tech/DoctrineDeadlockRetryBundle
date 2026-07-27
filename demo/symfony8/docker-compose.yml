@@ -22,7 +22,8 @@ services:
       - APP_DEBUG=1
       - APP_SECRET=${APP_SECRET:-demo-secret}
       - FRANKENPHP_MODE=${FRANKENPHP_MODE:-worker}
-      - DATABASE_URL=${DATABASE_URL:-sqlite:///%kernel.project_dir%/var/data.db}
+      # Demo uses SQLite (pdo_sqlite in Dockerfile). Do not interpolate a host Flex postgres URL.
+      - DATABASE_URL=sqlite:///%kernel.project_dir%/var/data.db
     # Mitigate Docker/WSL DNS failures (composer curl error 6: Could not resolve host).
     dns:
       - 8.8.8.8
@@ -33,31 +34,8 @@ services:
     networks:
       - doctrine-deadlock-retry-demo-network
 
-###> doctrine/doctrine-bundle ###
-  database:
-    image: postgres:${POSTGRES_VERSION:-16}-alpine
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-app}
-      # You should definitely change the password in production
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-!ChangeMe!}
-      POSTGRES_USER: ${POSTGRES_USER:-app}
-    healthcheck:
-      test: ["CMD", "pg_isready", "-d", "${POSTGRES_DB:-app}", "-U", "${POSTGRES_USER:-app}"]
-      timeout: 5s
-      retries: 5
-      start_period: 60s
-    volumes:
-      - database_data:/var/lib/postgresql/data:rw
-      # You may use a bind-mounted host directory instead, so that it is harder to accidentally remove the volume and lose all your data!
-      # - ./docker/db/data:/var/lib/postgresql/data:rw
-###< doctrine/doctrine-bundle ###
-
 volumes:
   composer-cache:
-
-###> doctrine/doctrine-bundle ###
-  database_data:
-###< doctrine/doctrine-bundle ###
     driver: local
 
 networks:

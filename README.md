@@ -13,6 +13,10 @@
 
 Symfony bundle that retries `EntityManager::flush()` and custom operations when Doctrine DBAL raises a deadlock (`SQLSTATE[40001]`, MySQL error 1213).
 
+![FrankenPHP Friendly Worker Mode](docs/images/frankenphp-friendly.png)
+
+This bundle is **FrankenPHP worker mode friendly**.
+
 ## Features
 
 - **DeadlockRetryService**: `flush(?string $profile)` and `retry(callable $operation, ?string $profile)`.
