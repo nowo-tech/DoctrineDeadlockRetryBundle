@@ -26,7 +26,6 @@ This bundle is **FrankenPHP worker mode friendly**.
 
 ## Documentation
 
-- [GitHub Actions CI requirements](docs/GITHUB_CI.md)
 - [Installation](docs/INSTALLATION.md)
 - [Configuration](docs/CONFIGURATION.md)
 - [Usage](docs/USAGE.md)
@@ -43,7 +42,8 @@ This bundle is **FrankenPHP worker mode friendly**.
 ### Additional documentation
 
 - [Demo (Symfony 7 & 8)](demo/README.md) — run `make -C demo up-symfony8` from the bundle root.
-- [Demo with FrankenPHP](docs/DEMO-FRANKENPHP.md) — `FRANKENPHP_MODE` (`classic` \| `worker`, default **worker**).
+- [Demo with FrankenPHP](docs/DEMO-FRANKENPHP.md) — `FRANKENPHP_MODE` (`classic` \| `worker`, default **worker**); `make demo-smoke` (REQ-TEST-011).
+- [GitHub Actions CI requirements](docs/GITHUB_CI.md)
 
 ## Quick example
 

@@ -15,6 +15,7 @@
 - [ ] `make cs-check`
 - [ ] `make phpstan`
 - [ ] `make test-coverage` (100% PHP lines target)
+- [ ] `make demo-smoke` (or rely on `release-check-demos` / CI demo-smoke workflow)
 - [ ] Documentation updated if behaviour or configuration changed (CHANGELOG, UPGRADING, README)
 
 See also [SECURITY.md](SECURITY.md#release-security-checklist-1241).

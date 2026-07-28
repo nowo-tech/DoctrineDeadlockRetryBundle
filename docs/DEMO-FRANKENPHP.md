@@ -11,6 +11,7 @@ This document describes how the bundle’s demo applications run under **Franken
 - [Switching classic vs worker (`FRANKENPHP_MODE`)](#switching-classic-vs-worker-frankenphp_mode)
 - [Reproducing in another bundle](#reproducing-in-another-bundle)
 - [Troubleshooting](#troubleshooting)
+- [Demo smoke (REQ-TEST-011)](#demo-smoke-req-test-011)
 
 ---
 
@@ -279,3 +280,13 @@ This gives you a reproducible development setup (changes visible on refresh) and
 
 - The Caddyfile is read when FrankenPHP starts. Restart the container: `docker-compose restart` or `make -C demo/symfony8 restart`.
 - In dev, the entrypoint copies `Caddyfile.dev` over the default; ensure you edited `Caddyfile.dev` and that it is mounted (or baked into the image) so the copy is up to date.
+
+## Demo smoke (REQ-TEST-011)
+
+Automated smoke proves the Symfony 8 FrankenPHP demo boots and returns **HTTP 200**:
+
+```bash
+make demo-smoke
+```
+
+This runs `make -C demo/symfony8 up`, then `curl` against `http://localhost:8018/` (or `PORT` from `.env` / `.env.example`). CI runs the same target via `.github/workflows/demo-smoke.yml` (schedule / tag / workflow_dispatch). For both demos in sequence, use `make -C demo release-verify`.

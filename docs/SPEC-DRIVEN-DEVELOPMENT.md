@@ -8,6 +8,15 @@ In this repository, **spec-driven development** has three layers that stay in sy
 
 There is no separate executable spec language (for example Gherkin); Spec Kit specs, tests, and static analysis are the mechanical proof alongside this document.
 
+## Table of contents
+
+- [User stories](#user-stories)
+- [Functional scope](#functional-scope)
+- [Validating the spec](#validating-the-spec)
+- [Requirement identifiers](#requirement-identifiers)
+- [Suggested workflow for contributors](#suggested-workflow-for-contributors)
+- [GitHub Spec Kit (summary)](#github-spec-kit-summary)
+- [See also](#see-also)
 
 ## User stories
 

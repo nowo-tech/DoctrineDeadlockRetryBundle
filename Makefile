@@ -5,7 +5,7 @@ COMPOSE_FILE := docker-compose.yml
 COMPOSE     := docker-compose -f $(COMPOSE_FILE)
 SERVICE_PHP := php
 
-.PHONY: help up down down-dev build shell install assets test test-coverage coverage-php-percent cs-check cs-fix qa clean release-check release-check-demos composer-sync rector rector-dry phpstan update validate setup-hooks check-no-cursor-coauthor check-open-prs strip-cursor-coauthor-from-history
+.PHONY: help up down down-dev build shell install assets test test-coverage coverage-php-percent cs-check cs-fix qa clean release-check release-check-demos demo-smoke composer-sync rector rector-dry phpstan update validate setup-hooks check-no-cursor-coauthor check-open-prs strip-cursor-coauthor-from-history
 
 help:
 	@echo "Doctrine Deadlock Retry Bundle - Development Commands"
@@ -29,6 +29,7 @@ help:
 	@echo "  phpstan         Run PHPStan static analysis"
 	@echo "  qa              Run all QA checks (cs-check + test)"
 	@echo "  release-check   Pre-release pipeline (includes demo release-verify)"
+	@echo "  demo-smoke      Boot demo/symfony8 and assert HTTP 200 (REQ-TEST-011)"
 	@echo "  check-open-prs  Fail if unresolved open GitHub PRs remain (REQ-REL-003)"
 	@echo ""
 	@echo "Demos (Symfony 7/8): make -C demo help"
@@ -100,6 +101,20 @@ validate: ensure-up
 	$(COMPOSE) exec -T $(SERVICE_PHP) composer validate --strict
 
 release-check: ensure-up check-no-cursor-coauthor check-open-prs composer-sync cs-fix cs-check rector-dry phpstan test-coverage release-check-demos
+
+# REQ-TEST-011 — boot demo stack and assert one HTTP 200
+demo-smoke:
+	@$(MAKE) -C demo/symfony8 up
+	@PORT=$$(grep "^PORT=" demo/symfony8/.env 2>/dev/null | cut -d= -f2 | tr -d '\r'); \
+	[ -z "$$PORT" ] && PORT=$$(grep "^PORT=" demo/symfony8/.env.example 2>/dev/null | cut -d= -f2 | tr -d '\r'); \
+	[ -z "$$PORT" ] && PORT=8018; \
+	echo "Smoke GET http://localhost:$$PORT/"; \
+	for i in 1 2 3 4 5 6 7 8 9 10; do \
+		code=$$(curl -fsS -o /dev/null -w "%{http_code}" --max-time 10 "http://localhost:$$PORT/" 2>/dev/null || true); \
+		if [ "$$code" = "200" ]; then echo "demo-smoke OK (HTTP 200)"; exit 0; fi; \
+		sleep 3; \
+	done; \
+	echo "demo-smoke failed: last HTTP $$code"; exit 1
 
 release-check-demos:
 	@$(MAKE) -C demo release-verify

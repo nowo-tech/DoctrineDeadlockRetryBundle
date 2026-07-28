@@ -4,7 +4,61 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## Table of contents
+
+- [[Unreleased]](#unreleased)
+- [[2.0.5] - 2026-07-29](#205-2026-07-29)
+  - [Added](#added)
+  - [Changed](#changed)
+  - [Documentation](#documentation)
+- [[2.0.4] - 2026-07-27](#204-2026-07-27)
+  - [Fixed](#fixed)
+  - [Added](#added)
+  - [Changed](#changed)
+  - [Documentation](#documentation)
+- [[2.0.3] - 2026-07-22](#203-2026-07-22)
+  - [Added](#added)
+  - [Changed](#changed)
+  - [Documentation](#documentation)
+- [[2.0.2] - 2026-07-20](#202-2026-07-20)
+  - [Added](#added)
+  - [Changed](#changed)
+  - [Documentation](#documentation)
+- [[2.0.1] - 2026-07-09](#201-2026-07-09)
+  - [Changed](#changed)
+  - [Added](#added)
+  - [Documentation](#documentation)
+- [[2.0.0] - 2026-06-11](#200-2026-06-11)
+  - [Changed](#changed)
+  - [Removed](#removed)
+- [[1.0.1] - 2026-06-11](#101-2026-06-11)
+  - [Fixed](#fixed)
+- [[1.0.0] - 2026-05-20](#100-2026-05-20)
+  - [Added](#added)
+  - [Documentation](#documentation)
+
 ## [Unreleased]
+
+## [2.0.5] - 2026-07-29
+
+### Added
+
+- **`make demo-smoke`** + `.github/workflows/demo-smoke.yml`: boot `demo/symfony8` and assert HTTP 200 (REQ-TEST-011).
+- **REQ-SF-005**: `SYMFONY_DEPRECATIONS_HELPER=max[direct]=0` in `phpunit.xml.dist` and CI.
+- **CI**: PHPStan job in `.github/workflows/ci.yml` (REQ-CS-006).
+- `check-open-prs.sh` resolves `origin` to `--repo owner/name` for `gh` over SSH remotes.
+
+### Changed
+
+- PHPStan: explicit `ignoreErrors: []` (REQ-CS-006).
+
+### Documentation
+
+- README `## Documentation` canonical order (REQ-DOCS-002); GITHUB_CI under Additional.
+- Table of contents on long docs (REQ-DOCS-005).
+- `docs/SECURITY.md`: OBS logging policy; AI audit Pass (good) (REQ-SEC-004); full 12.4.1 checklist.
+- DEMO-FRANKENPHP: document `make demo-smoke`.
+- UPGRADING notes for 2.0.5.
 
 ## [2.0.4] - 2026-07-27
 
@@ -117,6 +171,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Installation, configuration, usage, security, upgrading, and FrankenPHP demo guides.
 
+[2.0.5]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v2.0.5
 [2.0.4]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v2.0.4
 [2.0.3]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v2.0.3
 [2.0.2]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v2.0.2

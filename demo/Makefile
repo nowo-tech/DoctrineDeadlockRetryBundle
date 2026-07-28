@@ -3,7 +3,7 @@
 
 DEMOS := symfony7 symfony8
 
-.PHONY: help clean test-all test-coverage-all verify-all release-verify release-check
+.PHONY: help clean test-all test-coverage-all verify-all release-verify release-check demo-smoke
 .PHONY: $(foreach d,$(DEMOS),up-$d down-$d restart-$d build-$d install-$d update-bundle-$d shell-$d logs-$d test-$d test-coverage-$d verify-$d)
 .PHONY: up down restart build install update-bundle test shell logs test-coverage verify
 
@@ -33,6 +33,8 @@ help:
 	@echo "  test-coverage-all   Run tests with coverage in all demos"
 	@echo "  verify-all          Verify all demos (up + HTTP 200)"
 	@echo "  release-verify      For release-check: up each demo, HTTP 200, down"
+	@echo "  demo-smoke          Alias: up symfony8 -> HTTP 200 (REQ-TEST-011)"
+	@echo "  release-check       test-coverage-all + release-verify"
 	@echo "  clean               Remove vendor and var from all demos"
 	@echo ""
 	@echo "Access (after make up-<demo>): see .env PORT in each demo (8017 / 8018)."
@@ -141,6 +143,9 @@ verify-all:
 
 release-check: test-coverage-all release-verify
 	@echo "All demos passed release-check."
+
+demo-smoke:
+	@$(MAKE) -C $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/..) demo-smoke
 
 release-verify:
 	@for demo in $(DEMOS); do \

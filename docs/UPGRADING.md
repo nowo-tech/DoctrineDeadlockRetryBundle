@@ -1,5 +1,30 @@
 # Upgrading
 
+## Table of contents
+
+- [To 2.0.5](#to-205)
+- [To 2.0.4](#to-204)
+- [To 2.0.3](#to-203)
+- [To 2.0.2](#to-202)
+- [To 2.0.1](#to-201)
+- [To 2.0.0](#to-200)
+- [To 1.0.1](#to-101)
+- [To 1.0.0](#to-100)
+
+## To 2.0.5
+
+Patch release; no configuration or public API changes for application code.
+
+```bash
+composer update nowo-tech/doctrine-deadlock-retry-bundle
+```
+
+Maintainers:
+
+- `make demo-smoke` boots the Symfony 8 FrankenPHP demo and asserts HTTP 200 (also `.github/workflows/demo-smoke.yml`).
+- PHPUnit / CI fail on **direct** Symfony deprecations (`SYMFONY_DEPRECATIONS_HELPER=max[direct]=0`).
+- CI runs a dedicated PHPStan job.
+
 ## To 2.0.4
 
 Patch release; no configuration or public API changes for application code.
