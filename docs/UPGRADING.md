@@ -2,6 +2,7 @@
 
 ## Table of contents
 
+- [To 2.0.6](#to-206)
 - [To 2.0.5](#to-205)
 - [To 2.0.4](#to-204)
 - [To 2.0.3](#to-203)
@@ -10,6 +11,19 @@
 - [To 2.0.0](#to-200)
 - [To 1.0.1](#to-101)
 - [To 1.0.0](#to-100)
+
+## To 2.0.6
+
+Patch release; no configuration or public API changes for application code.
+
+```bash
+composer update nowo-tech/doctrine-deadlock-retry-bundle
+```
+
+Maintainers / CI:
+
+- Makefiles detect `docker compose` vs `docker-compose` automatically and invoke Compose via a shell helper (WSL-safe).
+- Optional monorepo `../.scripts/Makefile*.mk` includes no longer break a standalone clone (e.g. GitHub Actions).
 
 ## To 2.0.5
 

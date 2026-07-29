@@ -1,6 +1,15 @@
 # Makefile for Symfony 8.0 Demo (Doctrine Deadlock Retry Bundle)
 
-.PHONY: help up down build install shell logs test test-coverage cache-clear update-bundle ensure-up verify schema-update
+# Prefer Compose V2 plugin (GitHub Actions / modern Docker Desktop); fall back to docker-compose V1 (REQ-MAKE-010).
+# Always invoke via $(call dc,...) so Make routes through the shell — direct execve of the WSL
+# Docker Desktop CLI symlink fails with "Permission denied" (EACCES).
+COMPOSE_BIN := $(shell docker compose version >/dev/null 2>&1 && echo "docker compose" || echo "docker-compose")
+dc = $(SHELL) -c '$(COMPOSE_BIN) $(1)'
+# For optional monorepo update-deps include (REQ-MAKE-008).
+COMPOSE := $(COMPOSE_BIN)
+SERVICE_PHP := php
+
+.PHONY: help up down build install shell logs test test-coverage cache-clear update-bundle ensure-up verify schema-update restart
 
 help:
 	@echo "Doctrine Deadlock Retry Bundle - Symfony 8.0 Demo"
@@ -20,57 +29,57 @@ help:
 
 up:
 	@if [ ! -f .env ]; then cp .env.example .env 2>/dev/null || true; fi
-	docker-compose up -d
+	@$(call dc,up -d)
 	@echo "Waiting for container to be ready..."
 	@sleep 5
 	@echo "Installing dependencies..."
-	@docker-compose exec -T -e COMPOSER_MEMORY_LIMIT=-1 -e COMPOSER_MAX_PARALLEL_HTTP=4 php composer install --no-interaction --prefer-dist
-	@docker-compose exec -T php php bin/console doctrine:schema:update --force --no-interaction 2>/dev/null || true
+	@$(call dc,exec -T -e COMPOSER_MEMORY_LIMIT=-1 -e COMPOSER_MAX_PARALLEL_HTTP=4 php composer install --no-interaction --prefer-dist)
+	@$(call dc,exec -T php php bin/console doctrine:schema:update --force --no-interaction) 2>/dev/null || true
 	@PORT=$$(grep "^PORT=" .env 2>/dev/null | cut -d= -f2 | tr -d '\r'); \
 	[ -z "$$PORT" ] && PORT=$$(grep "^PORT=" .env.example 2>/dev/null | cut -d= -f2 | tr -d '\r'); \
 	echo "Demo started at: http://localhost:$$PORT"
 
 down:
-	docker-compose down
+	@$(call dc,down)
 
 restart: ensure-up
-	docker-compose restart
+	@$(call dc,restart)
 
 build:
-	docker-compose build --no-cache
+	@$(call dc,build --no-cache)
 
 ensure-up:
-	@if ! docker-compose exec -T php true 2>/dev/null; then \
-		docker-compose up -d; \
+	@if ! $(call dc,exec -T php true) >/dev/null 2>&1; then \
+		$(call dc,up -d); \
 		sleep 3; \
 	fi
 
 install: ensure-up
-	docker-compose exec -T -e COMPOSER_MEMORY_LIMIT=-1 -e COMPOSER_MAX_PARALLEL_HTTP=4 php composer install --no-interaction --prefer-dist
+	@$(call dc,exec -T -e COMPOSER_MEMORY_LIMIT=-1 -e COMPOSER_MAX_PARALLEL_HTTP=4 php composer install --no-interaction --prefer-dist)
 
 schema-update: ensure-up
-	docker-compose exec -T php php bin/console doctrine:schema:update --force --no-interaction
+	@$(call dc,exec -T php php bin/console doctrine:schema:update --force --no-interaction)
 
 shell: ensure-up
-	docker-compose exec php sh
+	@$(call dc,exec php sh)
 
 logs:
-	docker-compose logs -f
+	@$(call dc,logs -f)
 
 test: ensure-up schema-update
-	docker-compose exec -T php php bin/console doctrine:schema:update --force --no-interaction --env=test
-	docker-compose exec -e APP_ENV=test php composer test
+	@$(call dc,exec -T php php bin/console doctrine:schema:update --force --no-interaction --env=test)
+	@$(call dc,exec -e APP_ENV=test php composer test)
 
 test-coverage: ensure-up schema-update
-	docker-compose exec -T php php bin/console doctrine:schema:update --force --no-interaction --env=test
-	docker-compose exec php composer test-coverage
+	@$(call dc,exec -T php php bin/console doctrine:schema:update --force --no-interaction --env=test)
+	@$(call dc,exec php composer test-coverage)
 
 cache-clear: ensure-up
-	docker-compose exec php php bin/console cache:clear
+	@$(call dc,exec php php bin/console cache:clear)
 
 update-bundle: ensure-up
-	docker-compose exec php composer update nowo-tech/doctrine-deadlock-retry-bundle --no-interaction
-	docker-compose exec php php bin/console cache:clear
+	@$(call dc,exec php composer update nowo-tech/doctrine-deadlock-retry-bundle --no-interaction)
+	@$(call dc,exec php php bin/console cache:clear)
 	@echo "Bundle updated."
 
 verify:
@@ -78,14 +87,13 @@ verify:
 	@port=$$(grep '^PORT=' .env 2>/dev/null | cut -d= -f2 | tr -d '\r'); \
 	[ -z "$$port" ] && port=$$(grep '^PORT=' .env.example 2>/dev/null | cut -d= -f2 | tr -d '\r'); \
 	[ -z "$$port" ] && port=8018; \
-	docker-compose up -d 2>/dev/null; sleep 10; \
-	docker-compose exec -T php composer install --no-interaction --prefer-dist 2>/dev/null || true; \
-	docker-compose exec -T php php bin/console doctrine:schema:update --force --no-interaction 2>/dev/null || true; \
+	$(call dc,up -d) 2>/dev/null; sleep 10; \
+	$(call dc,exec -T php composer install --no-interaction --prefer-dist) 2>/dev/null || true; \
+	$(call dc,exec -T php php bin/console doctrine:schema:update --force --no-interaction) 2>/dev/null || true; \
 	code=$$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:$$port 2>/dev/null || echo "000"); \
 	if [ "$$code" = "200" ]; then echo "OK (HTTP $$code)"; else echo "Failed (HTTP $$code)"; exit 1; fi
 
 # REQ-MAKE-008: update-deps (REQ-MAKE-008)
-COMPOSE := docker-compose
-SERVICE_PHP := php
 BUNDLE_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../..)
-include $(BUNDLE_ROOT)/../.scripts/Makefile.demo-update-deps.mk
+# Optional: monorepo helper absent on standalone GitHub Actions checkout (REQ-MAKE-009).
+-include $(BUNDLE_ROOT)/../.scripts/Makefile.demo-update-deps.mk

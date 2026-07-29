@@ -2,7 +2,11 @@
 # All dev targets use the root docker-compose.yml.
 
 COMPOSE_FILE := docker-compose.yml
-COMPOSE     := docker-compose -f $(COMPOSE_FILE)
+# Prefer Compose V2 plugin (GitHub Actions / modern Docker Desktop); fall back to docker-compose V1 (REQ-MAKE-010).
+# Always invoke via $(call dc,...) so Make routes through the shell — direct execve of the WSL
+# Docker Desktop CLI symlink fails with "Permission denied" (EACCES).
+COMPOSE_BIN := $(shell docker compose version >/dev/null 2>&1 && echo "docker compose" || echo "docker-compose")
+dc = $(SHELL) -c '$(COMPOSE_BIN) -f $(COMPOSE_FILE) $(1)'
 SERVICE_PHP := php
 
 .PHONY: help up down down-dev build shell install assets test test-coverage coverage-php-percent cs-check cs-fix qa clean release-check release-check-demos demo-smoke composer-sync rector rector-dry phpstan update validate setup-hooks check-no-cursor-coauthor check-open-prs strip-cursor-coauthor-from-history
@@ -15,7 +19,7 @@ help:
 	@echo "Targets:"
 	@echo "  up              Start Docker container"
 	@echo "  down            Stop Docker container"
-	@echo "  down-dev        Stop root docker-compose (dev) and remove orphans"
+	@echo "  down-dev        Stop root compose (dev) and remove orphans"
 	@echo "  build           Rebuild Docker image (no cache)"
 	@echo "  shell           Open shell in container"
 	@echo "  install         Install Composer dependencies"
@@ -39,66 +43,66 @@ help:
 	@echo "  validate        Run composer validate --strict"
 
 build:
-	$(COMPOSE) build --no-cache
+	@$(call dc,build --no-cache)
 
 up:
-	$(COMPOSE) build
-	$(COMPOSE) up -d
+	@$(call dc,build)
+	@$(call dc,up -d)
 	@echo "Installing dependencies..."
-	$(COMPOSE) exec -T $(SERVICE_PHP) composer install --no-interaction
+	@$(call dc,exec -T $(SERVICE_PHP) composer install --no-interaction)
 	@echo "Container ready."
 
 down:
-	$(COMPOSE) down
+	@$(call dc,down)
 
 down-dev:
-	$(COMPOSE) down --remove-orphans
+	@$(call dc,down --remove-orphans)
 
 shell:
-	$(COMPOSE) exec $(SERVICE_PHP) sh
+	@$(call dc,exec $(SERVICE_PHP) sh)
 
 install: ensure-up
-	$(COMPOSE) exec -T $(SERVICE_PHP) composer install
+	@$(call dc,exec -T $(SERVICE_PHP) composer install)
 	@echo "Dependencies installed."
 
 ensure-up:
-	@if ! $(COMPOSE) exec -T $(SERVICE_PHP) true 2>/dev/null; then \
+	@if ! $(call dc,exec -T $(SERVICE_PHP) true) >/dev/null 2>&1; then \
 		echo "Starting container..."; \
-		$(COMPOSE) up -d; \
+		$(call dc,up -d); \
 		sleep 3; \
-		$(COMPOSE) exec -T $(SERVICE_PHP) composer install --no-interaction; \
+		$(call dc,exec -T $(SERVICE_PHP) composer install --no-interaction); \
 	fi
 
 test: ensure-up
-	$(COMPOSE) exec $(SERVICE_PHP) composer test
+	@$(call dc,exec $(SERVICE_PHP) composer test)
 
 test-coverage: ensure-up
-	$(COMPOSE) exec $(SERVICE_PHP) composer test-coverage | tee coverage-php.txt
+	@$(call dc,exec $(SERVICE_PHP) composer test-coverage) | tee coverage-php.txt
 	./.scripts/php-coverage-percent.sh coverage-php.txt
 
 cs-check: ensure-up
-	$(COMPOSE) exec -T $(SERVICE_PHP) composer cs-check
+	@$(call dc,exec -T $(SERVICE_PHP) composer cs-check)
 
 cs-fix: ensure-up
-	$(COMPOSE) exec -T $(SERVICE_PHP) composer cs-fix
+	@$(call dc,exec -T $(SERVICE_PHP) composer cs-fix)
 
 rector: ensure-up
-	$(COMPOSE) exec -T $(SERVICE_PHP) composer rector
+	@$(call dc,exec -T $(SERVICE_PHP) composer rector)
 
 rector-dry: ensure-up
-	$(COMPOSE) exec -T $(SERVICE_PHP) composer rector-dry
+	@$(call dc,exec -T $(SERVICE_PHP) composer rector-dry)
 
 phpstan: ensure-up
-	$(COMPOSE) exec -T $(SERVICE_PHP) composer phpstan
+	@$(call dc,exec -T $(SERVICE_PHP) composer phpstan)
 
 qa: ensure-up
-	$(COMPOSE) exec -T $(SERVICE_PHP) composer qa
+	@$(call dc,exec -T $(SERVICE_PHP) composer qa)
 
 update: ensure-up
-	$(COMPOSE) exec -T $(SERVICE_PHP) composer update --no-interaction
+	@$(call dc,exec -T $(SERVICE_PHP) composer update --no-interaction)
 
 validate: ensure-up
-	$(COMPOSE) exec -T $(SERVICE_PHP) composer validate --strict
+	@$(call dc,exec -T $(SERVICE_PHP) composer validate --strict)
 
 release-check: ensure-up check-no-cursor-coauthor check-open-prs composer-sync cs-fix cs-check rector-dry phpstan test-coverage release-check-demos
 
@@ -120,15 +124,14 @@ release-check-demos:
 	@$(MAKE) -C demo release-verify
 
 composer-sync: ensure-up
-	$(COMPOSE) exec -T $(SERVICE_PHP) composer validate --strict
-	$(COMPOSE) exec -T $(SERVICE_PHP) composer update --no-install
+	@$(call dc,exec -T $(SERVICE_PHP) composer validate --strict)
+	@$(call dc,exec -T $(SERVICE_PHP) composer update --no-install)
 
 clean: ensure-up
-	$(COMPOSE) exec -T $(SERVICE_PHP) sh -c "rm -rf vendor .phpunit.cache coverage coverage.xml coverage-php.txt .php-cs-fixer.cache"
+	@$(call dc,exec -T $(SERVICE_PHP) sh -c "rm -rf vendor .phpunit.cache coverage coverage.xml coverage-php.txt .php-cs-fixer.cache")
 
 assets:
 	@echo "No frontend assets in this bundle."
-
 
 setup-hooks:
 	@chmod +x .githooks/pre-commit 2>/dev/null || true
@@ -138,7 +141,9 @@ setup-hooks:
 
 # REQ-MAKE-008: update-deps (REQ-MAKE-008)
 BUNDLE_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
-include $(BUNDLE_ROOT)/../.scripts/Makefile.update-deps.mk
+# Optional: monorepo helper absent on standalone GitHub Actions checkout (REQ-MAKE-009).
+-include $(BUNDLE_ROOT)/../.scripts/Makefile.update-deps.mk
+
 check-no-cursor-coauthor:
 	@chmod +x .scripts/check-no-cursor-coauthor.sh
 	@./.scripts/check-no-cursor-coauthor.sh HEAD

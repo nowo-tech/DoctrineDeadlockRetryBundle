@@ -7,6 +7,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## Table of contents
 
 - [[Unreleased]](#unreleased)
+- [[2.0.6] - 2026-07-29](#206-2026-07-29)
+  - [Changed](#changed)
+  - [Documentation](#documentation)
 - [[2.0.5] - 2026-07-29](#205-2026-07-29)
   - [Added](#added)
   - [Changed](#changed)
@@ -38,6 +41,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - [Documentation](#documentation)
 
 ## [Unreleased]
+
+## [2.0.6] - 2026-07-29
+
+### Changed
+
+- Makefiles prefer **`docker compose`** (V2) and fall back to `docker-compose` (V1) (REQ-MAKE-010).
+- Monorepo `update-deps` Makefile includes are optional (`-include`) so standalone CI checkouts do not fail (REQ-MAKE-009).
+- Compose invocations use `$(call dc,...)` so Make routes through the shell (avoids WSL Docker Desktop `Permission denied` on direct `execve`).
+
+### Documentation
+
+- UPGRADING notes for 2.0.6.
 
 ## [2.0.5] - 2026-07-29
 
@@ -171,6 +186,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Installation, configuration, usage, security, upgrading, and FrankenPHP demo guides.
 
+[2.0.6]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v2.0.6
 [2.0.5]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v2.0.5
 [2.0.4]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v2.0.4
 [2.0.3]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v2.0.3
