@@ -6,7 +6,6 @@ Demos for Composer package [nowo-tech/doctrine-deadlock-retry-bundle](https://pa
 
 | Demo        | Symfony | Port (default in `.env.example`) |
 |------------|---------|----------------------------------|
-| symfony7   | 7.0     | 8017                             |
 | symfony8   | 8.0     | 8018                             |
 
 ## Quick start (from bundle root)
@@ -16,7 +15,7 @@ Demos for Composer package [nowo-tech/doctrine-deadlock-retry-bundle](https://pa
 make -C demo up-symfony8
 
 # Start Symfony 7 demo
-make -C demo up-symfony7
+make -C demo up-symfony8
 ```
 
 Then open `http://localhost:<PORT>` (e.g. http://localhost:8018 for Symfony 8, or the `PORT` in the demo’s `.env`).
@@ -27,8 +26,8 @@ Each demo mounts the bundle root at `/var/doctrine-deadlock-retry-bundle` in the
 
 ## Commands (from bundle root)
 
-- `make -C demo up-symfony7` / `make -C demo up-symfony8` – start a demo
-- `make -C demo down DEMO=symfony8` – stop (use `DEMO=symfony7` or `symfony8`)
+- `make -C demo up-symfony8` / `make -C demo up-symfony8` – start a demo
+- `make -C demo down DEMO=symfony8` – stop (use `DEMO=symfony8`)
 - `make -C demo update-bundle DEMO=symfony8` – update the bundle from path and clear cache
 - `make -C demo test DEMO=symfony8` – run that demo’s tests
 - `make -C demo verify-all` – start both demos and check HTTP 200
