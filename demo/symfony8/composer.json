@@ -4,10 +4,10 @@
     "type": "project",
     "license": "MIT",
     "require": {
-        "php": ">=8.4,<8.6",
         "doctrine/doctrine-bundle": "^3.0",
         "doctrine/orm": "^3.0",
         "nowo-tech/doctrine-deadlock-retry-bundle": "@dev",
+        "php": ">=8.4,<8.6",
         "symfony/console": "^8.0",
         "symfony/dotenv": "^8.0",
         "symfony/flex": "^2.0",
@@ -15,9 +15,12 @@
         "symfony/runtime": "^8.0",
         "symfony/twig-bundle": "^8.0",
         "symfony/web-profiler-bundle": "^8.0",
-        "symfony/yaml": "^8.0"
+        "symfony/yaml": "^8.0",
+        "twig/extra-bundle": "^3.12",
+        "twig/string-extra": "^3.12"
     },
     "require-dev": {
+        "nowo-tech/hot-reload-bundle": "^1.4",
         "nowo-tech/twig-inspector-bundle": "*",
         "phpunit/phpunit": "^10.0 || ^11.0",
         "symfony/browser-kit": "8.1.*",

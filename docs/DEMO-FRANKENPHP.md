@@ -26,7 +26,7 @@ The demos use:
 - **Two Caddyfiles**: `Caddyfile` (worker) and `Caddyfile.dev` (classic, no worker).
 - An **entrypoint** that selects classic vs worker Caddyfile from **`FRANKENPHP_MODE`** (`classic` \| `worker`, default **`worker`** in `.env.example`).
 
-There are demos for **Symfony 7** and **Symfony 8** (e.g. **demo/symfony7**, **demo/symfony8**). Each has its own Dockerfile, docker-compose.yml and Makefile. From the bundle root you run e.g. `make -C demo/symfony8 up` (see the demo’s README for the URL and port). The Symfony 8 demo uses the newest FrankenPHP PHP image compatible with its `require.php` (currently **PHP 8.5**).
+There are demos for **Symfony 8** (e.g. **demo/symfony8**, **demo/symfony8**). Each has its own Dockerfile, docker-compose.yml and Makefile. From the bundle root you run e.g. `make -C demo/symfony8 up` (see the demo’s README for the URL and port). The Symfony 8 demo uses the newest FrankenPHP PHP image compatible with its `require.php` (currently **PHP 8.5**).
 
 FrankenPHP runtime mode is controlled by **`FRANKENPHP_MODE`** (not by `APP_ENV`). Typical local demos still use `APP_ENV=dev` with Twig/OPcache cache-busting; switch to `classic` when you need per-request PHP / easier hot-reload:
 
@@ -37,7 +37,7 @@ FrankenPHP runtime mode is controlled by **`FRANKENPHP_MODE`** (not by `APP_ENV`
 | Twig / OPcache (with `APP_ENV=dev`) | Cache off / revalidate every request | Same if still in `dev` |
 | HTTP cache headers | `no-store`, `no-cache` (in Caddyfile.dev) | Omitted or cache-friendly |
 
-**Ports:** Each demo uses `PORT` from its `.env`. The checked-in `.env.example` uses **8017** for `demo/symfony7` and **8018** for `demo/symfony8` so both can run side by side. You may set any free port (e.g. `8001`) if you run a single demo.
+**Ports:** Each demo uses `PORT` from its `.env`. The checked-in `.env.example` uses **8017** for `demo/symfony8` and **8018** for `demo/symfony8` so both can run side by side. You may set any free port (e.g. `8001`) if you run a single demo.
 
 ---
 
@@ -46,6 +46,7 @@ FrankenPHP runtime mode is controlled by **`FRANKENPHP_MODE`** (not by `APP_ENV`
 The demo applications are configured for **local development and debugging**:
 
 - **Symfony Web Profiler** (`Symfony\Bundle\WebProfilerBundle\WebProfilerBundle`) — enabled in `dev` and `test` environments. Provides the debug toolbar and profiler at the bottom of each page.
+- **Nowo Twig Inspector** (`nowo-tech/twig-inspector-bundle`) and **Nowo Hot Reload** (`nowo-tech/hot-reload-bundle`) — required together on FrankenPHP demos (dev/test only; Caddyfile Mercure + `hot_reload`, plus `worker { watch }` in worker mode). Do not enable Hot Reload in production.
 - **Symfony Debug bundle** (`Symfony\Bundle\DebugBundle\DebugBundle`) — enabled in `dev` and `test`. Required for the profiler and improved error pages.
 - **Doctrine Deadlock Retry Bundle** (`Nowo\DoctrineDeadlockRetryBundle\NowoDoctrineDeadlockRetryBundle`) — the bundle under test; enabled in the demos. The demos are the bundle’s own test applications.
 - **Twig Inspector Bundle** (`nowo-tech/twig-inspector-bundle`) — optional dev tooling for Twig debugging; registered for `dev` and `test` only in the demo apps.
@@ -104,7 +105,7 @@ The demos’ Docker entrypoint copies this file over `/etc/frankenphp/Caddyfile`
 
 The demos include **docker/php-dev.ini** so OPcache rechecks file modification time on every request; recompiled Twig templates in `var/cache` are then picked up immediately.
 
-- **demo/symfony7/docker/php-dev.ini** and **demo/symfony8/docker/php-dev.ini**:
+- **demo/symfony8/docker/php-dev.ini** and **demo/symfony8/docker/php-dev.ini**:
 
 ```ini
 ; Recheck compiled PHP files every request so Twig-compiled templates in var/cache are always fresh
@@ -117,7 +118,7 @@ opcache.revalidate_freq=0
 
 The demos disable Twig’s compiled template cache in the dev environment so Twig recompiles from source on each request.
 
-- **demo/symfony7/config/packages/dev/twig.yaml** and **demo/symfony8/config/packages/dev/twig.yaml**:
+- **demo/symfony8/config/packages/dev/twig.yaml** and **demo/symfony8/config/packages/dev/twig.yaml**:
 
 ```yaml
 # Disable Twig cache in dev so template changes are visible on refresh
@@ -136,7 +137,7 @@ Each demo’s **docker-compose.yml** sets `APP_ENV=dev` and `APP_DEBUG=1`, and m
 - `./docker/frankenphp/Caddyfile.dev:/etc/frankenphp/Caddyfile.dev`
 - `./docker/php-dev.ini:/usr/local/etc/php/conf.d/99-dev.ini:ro`
 
-Compose passes `FRANKENPHP_MODE=${FRANKENPHP_MODE:-worker}` into the PHP service. Default ports are **8017** for `demo/symfony7` and **8018** for `demo/symfony8` (see each demo’s `.env` or `PORT`).
+Compose passes `FRANKENPHP_MODE=${FRANKENPHP_MODE:-worker}` into the PHP service. Default ports are **8017** for `demo/symfony8` and **8018** for `demo/symfony8` (see each demo’s `.env` or `PORT`).
 
 ### 5. Entrypoint (`FRANKENPHP_MODE`)
 
@@ -155,7 +156,7 @@ From the bundle root:
 make -C demo/symfony8 up
 # → App ready at http://127.0.0.1:8018/ (or the PORT set in demo/symfony8/.env)
 
-make -C demo/symfony7 up
+make -C demo/symfony8 up
 # → App ready at http://127.0.0.1:8017/
 ```
 
