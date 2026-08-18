@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## Table of contents
 
 - [[Unreleased]](#unreleased)
+- [[2.0.7] - 2026-08-18](#207-2026-08-18)
 - [[2.0.6] - 2026-07-29](#206-2026-07-29)
   - [Changed](#changed)
   - [Documentation](#documentation)
@@ -41,6 +42,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - [Documentation](#documentation)
 
 ## [Unreleased]
+
+## [2.0.7] - 2026-08-18
+
+### Changed
+
+- **Demos:** pin `nowo-tech/hot-reload-bundle` to `^1.4` with FrankenPHP Mercure/`hot_reload` (`dev`/`test` only).
+- **Demos:** Symfony 8 only; Symfony 6/7 demo apps removed.
+
+[2.0.7]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v2.0.7
 
 ## [2.0.6] - 2026-07-29
 

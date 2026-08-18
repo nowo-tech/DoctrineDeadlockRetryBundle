@@ -2,6 +2,7 @@
 
 ## Table of contents
 
+- [To 2.0.7](#to-207)
 - [To 2.0.6](#to-206)
 - [To 2.0.5](#to-205)
 - [To 2.0.4](#to-204)
@@ -11,6 +12,15 @@
 - [To 2.0.0](#to-200)
 - [To 1.0.1](#to-101)
 - [To 1.0.0](#to-100)
+
+## To 2.0.7
+
+No application upgrade steps. **Demos only:** Hot Reload Bundle `^1.4` (FrankenPHP Mercure/`hot_reload`, `dev`/`test`). Shipped demos are Symfony 8 only (Symfony 6/7 demo apps removed).
+
+```bash
+composer update nowo-tech/doctrine-deadlock-retry-bundle
+php bin/console cache:clear
+```
 
 ## To 2.0.6
 
