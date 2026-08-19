@@ -2,6 +2,7 @@
 
 ## Table of contents
 
+- [To 2.0.8](#to-208)
 - [To 2.0.7](#to-207)
 - [To 2.0.6](#to-206)
 - [To 2.0.5](#to-205)
@@ -12,6 +13,14 @@
 - [To 2.0.0](#to-200)
 - [To 1.0.1](#to-101)
 - [To 1.0.0](#to-100)
+
+## To 2.0.8
+
+No application upgrade steps.
+
+```bash
+composer update nowo-tech/doctrine-deadlock-retry-bundle
+```
 
 ## To 2.0.7
 
