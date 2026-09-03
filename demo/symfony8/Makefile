@@ -34,7 +34,20 @@ up:
 	@sleep 5
 	@echo "Installing dependencies..."
 	@$(call dc,exec -T -e COMPOSER_MEMORY_LIMIT=-1 -e COMPOSER_MAX_PARALLEL_HTTP=4 php composer install --no-interaction --prefer-dist)
-	@$(call dc,exec -T php php bin/console doctrine:schema:update --force --no-interaction) 2>/dev/null || true
+	@echo "Waiting for MySQL from PHP container..."
+	@i=0; \
+	while [ $$i -lt 30 ]; do \
+		if $(call dc,exec -T php php bin/console doctrine:schema:update --force --no-interaction) 2>/dev/null; then \
+			break; \
+		fi; \
+		i=$$((i+1)); \
+		sleep 2; \
+	done; \
+	if [ $$i -ge 30 ]; then \
+		echo "MySQL not reachable from demo PHP container"; \
+		$(call dc,logs --tail=50 db php) || true; \
+		exit 1; \
+	fi
 	@PORT=$$(grep "^PORT=" .env 2>/dev/null | cut -d= -f2 | tr -d '\r'); \
 	[ -z "$$PORT" ] && PORT=$$(grep "^PORT=" .env.example 2>/dev/null | cut -d= -f2 | tr -d '\r'); \
 	echo "Demo started at: http://localhost:$$PORT"
