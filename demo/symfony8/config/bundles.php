@@ -16,7 +16,7 @@ return [
     WebProfilerBundle::class               => ['dev' => true, 'test' => true],
     DoctrineBundle::class                  => ['all' => true],
     NowoDoctrineDeadlockRetryBundle::class => ['all' => true],
-    NowoHotReloadBundle::class         => ['dev' => true, 'test' => true],
+    NowoHotReloadBundle::class             => ['dev' => true, 'test' => true],
     NowoTwigInspectorBundle::class         => ['dev' => true, 'test' => true],
-    TwigExtraBundle::class => ['all' => true],
+    TwigExtraBundle::class                 => ['all' => true],
 ];
