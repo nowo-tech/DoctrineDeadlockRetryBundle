@@ -10,6 +10,7 @@ use Nowo\DoctrineDeadlockRetryBundle\DependencyInjection\NowoDoctrineDeadlockRet
 use Nowo\DoctrineDeadlockRetryBundle\Service\DeadlockRetryService;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
+use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\DependencyInjection\Reference;
 
 /**
@@ -31,6 +32,17 @@ final class NowoDoctrineDeadlockRetryExtensionTest extends TestCase
     public function testGetAlias(): void
     {
         $this->assertSame('nowo_doctrine_deadlock_retry', $this->extension->getAlias());
+    }
+
+    public function testLoadWiresOptionalManagerRegistry(): void
+    {
+        $this->extension->load([], $this->container);
+
+        $registry = $this->container->getDefinition(DeadlockRetryService::class)->getArgument('$managerRegistry');
+
+        $this->assertInstanceOf(Reference::class, $registry);
+        $this->assertSame('doctrine', (string) $registry);
+        $this->assertSame(ContainerInterface::IGNORE_ON_INVALID_REFERENCE, $registry->getInvalidBehavior());
     }
 
     public function testLoadRegistersDeadlockRetryServiceWithProfiles(): void

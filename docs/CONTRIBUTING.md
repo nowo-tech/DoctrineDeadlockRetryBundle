@@ -16,7 +16,7 @@ make check-open-prs
 make release-check
 ```
 
-PHPStan includes `nowo-tech/phpstan-frankenphp` rulesets (require-dev only) so package code stays FrankenPHP worker-safe.
+PHPStan includes `nowo-tech/phpstan-frankenphp` rulesets (`ruleset-classic` + `ruleset-worker-strict`, require-dev only) so package code stays FrankenPHP worker-safe.
 
 ## Code of Conduct
 

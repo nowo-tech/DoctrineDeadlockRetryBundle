@@ -32,6 +32,7 @@ final class DeadlockRetryBundleIntegrationTest extends TestCase
         $this->connection    = $this->createMock(Connection::class);
         $this->entityManager = $this->createMock(EntityManagerInterface::class);
         $this->entityManager->method('getConnection')->willReturn($this->connection);
+        $this->entityManager->method('isOpen')->willReturn(true);
     }
 
     /**
@@ -55,7 +56,7 @@ final class DeadlockRetryBundleIntegrationTest extends TestCase
             }
         });
 
-        $container->compile();
+        $container->compile(true);
 
         return $container;
     }

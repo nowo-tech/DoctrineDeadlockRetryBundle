@@ -2,7 +2,7 @@
 
 **Baseline spec**: [`spec.md`](spec.md)  
 **Package**: `nowo-tech/doctrine-deadlock-retry-bundle`  
-**Last audited**: 2026-07-07
+**Last audited**: 2026-09-24
 
 Every production artifact under `src/` is listed below. Tests under `tests/` are out of Packagist scope.
 
@@ -15,13 +15,13 @@ Every production artifact under `src/` is listed below. Tests under `tests/` are
 | `DependencyInjection/Configuration.php` | Config tree `nowo_doctrine_deadlock_retry` | FR-CFG-001 |
 | `DependencyInjection/NowoDoctrineDeadlockRetryExtension.php` | DI extension, profile wiring | FR-CFG-002 |
 | `Exception/UnknownRetryProfileException.php` | Unknown profile error | FR-PROFILE-002 |
-| `Service/DeadlockRetryService.php` | `flush()` / `retry()` with backoff | FR-SVC-001, FR-SVC-002 |
+| `Service/DeadlockRetryService.php` | `flush()` / `retry()` / `getEntityManager()` with backoff and closed-manager recovery | FR-SVC-001, FR-SVC-002, FR-SVC-003, FR-SVC-004 |
 
 ## Symfony config (`src/Resources/config/`)
 
 | Source file | Spec section | Requirement IDs |
 | --- | --- | --- |
-| `Resources/config/services.yaml` | `DeadlockRetryService` wiring | FR-DI-001 |
+| `Resources/config/services.yaml` | `DeadlockRetryService` wiring (`@?doctrine`) | FR-DI-001 |
 
 ## Coverage summary
 

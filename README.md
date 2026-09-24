@@ -8,14 +8,15 @@ Symfony bundle that retries `EntityManager::flush()` and custom operations when 
 
 ![FrankenPHP Friendly Worker Mode](docs/images/frankenphp-friendly.png)
 
-This bundle is **FrankenPHP worker mode friendly**.
+This bundle is **FrankenPHP worker mode friendly**, including when the kernel is **not** reset between requests (see [worker audit](docs/FRANKENPHP-WORKER-AUDIT.md)).
 
 ## Features
 
-- **DeadlockRetryService**: `flush(?string $profile)` and `retry(callable $operation, ?string $profile)`.
+- **DeadlockRetryService**: `flush(?string $profile)`, `retry(callable $operation, ?string $profile)`, and `getEntityManager()`.
 - **Named profiles**: configure `max_retries`, `sleep_ms`, and `rollback_on_deadlock` per use case.
 - **Default profile**: used when no profile name is passed.
 - Detects `DeadlockException` and related driver errors in the exception chain.
+- Resets a closed EntityManager through `ManagerRegistry` so long-running workers do not keep serving a closed manager.
 
 ## Version policy
 
@@ -35,9 +36,11 @@ public function __construct(
 
 public function save(Order $order): void
 {
-    $this->entityManager->persist($order);
-    $this->deadlockRetry->flush();
-    $this->deadlockRetry->flush('batch');
+    $this->deadlockRetry->retry(function () use ($order): void {
+        $em = $this->deadlockRetry->getEntityManager();
+        $em->persist($order);
+        $em->flush();
+    });
 }
 ```
 
@@ -67,6 +70,7 @@ public function save(Order $order): void
 
 - [Demo (Symfony 7 & 8)](demo/README.md) — run `make -C demo up-symfony8` from the bundle root.
 - [Demo with FrankenPHP](docs/DEMO-FRANKENPHP.md) — `FRANKENPHP_MODE` (`classic` \| `worker`, default **worker**); `make demo-smoke` (REQ-TEST-011).
+- [FrankenPHP worker audit](docs/FRANKENPHP-WORKER-AUDIT.md) — scenario B (`reset_kernel=false`) compatibility.
 - [GitHub Actions CI requirements](docs/GITHUB_CI.md)
 
 ## Tests and coverage

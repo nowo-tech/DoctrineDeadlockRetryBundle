@@ -3,6 +3,8 @@
 ## Table of contents
 
 
+- [Unreleased](#unreleased)
+- [From 2.0.9 to 2.1.0](#from-209-to-210)
 - [From 2.0.8 to 2.0.9](#from-208-to-209)
 - [To 2.0.8](#to-208)
 - [To 2.0.7](#to-207)
@@ -16,9 +18,17 @@
 - [To 1.0.1](#to-101)
 - [To 1.0.0](#to-100)
 
-## From 2.0.8 to 2.0.9
+## Unreleased
 
-No breaking changes. **No application upgrade steps.**
+No pending upgrade notes.
+
+## From 2.0.9 to 2.1.0
+
+No configuration changes. Behaviour and public API:
+
+- When a deadlock closes the entity manager during `flush()` (the Doctrine ORM default), `flush()` now resets the manager and rethrows the original `DeadlockException`. Before, the retry failed with `EntityManagerClosed` and the manager stayed closed until a kernel reset. Use `retry()` with a callable that redoes the unit of work to retry ORM writes, and obtain the manager inside it with `getEntityManager()`.
+- A closed manager is reset through `ManagerRegistry` also when a non-deadlock exception is rethrown; entities loaded before the failure are detached from the new manager.
+- If you instantiate `DeadlockRetryService` manually, pass the registry as the new optional 4th argument to enable recovery.
 
 ```bash
 composer update nowo-tech/doctrine-deadlock-retry-bundle

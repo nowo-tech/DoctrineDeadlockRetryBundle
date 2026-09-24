@@ -7,42 +7,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## Table of contents
 
 - [[Unreleased]](#unreleased)
+- [[2.1.0] - 2026-09-24](#210-2026-09-24)
+- [[2.0.9] - 2026-08-24](#209-2026-08-24)
+- [[2.0.8] - 2026-08-19](#208-2026-08-19)
 - [[2.0.7] - 2026-08-18](#207-2026-08-18)
 - [[2.0.6] - 2026-07-29](#206-2026-07-29)
-  - [Changed](#changed)
-  - [Documentation](#documentation)
 - [[2.0.5] - 2026-07-29](#205-2026-07-29)
-  - [Added](#added)
-  - [Changed](#changed)
-  - [Documentation](#documentation)
 - [[2.0.4] - 2026-07-27](#204-2026-07-27)
-  - [Fixed](#fixed)
-  - [Added](#added)
-  - [Changed](#changed)
-  - [Documentation](#documentation)
 - [[2.0.3] - 2026-07-22](#203-2026-07-22)
-  - [Added](#added)
-  - [Changed](#changed)
-  - [Documentation](#documentation)
 - [[2.0.2] - 2026-07-20](#202-2026-07-20)
-  - [Added](#added)
-  - [Changed](#changed)
-  - [Documentation](#documentation)
 - [[2.0.1] - 2026-07-09](#201-2026-07-09)
-  - [Changed](#changed)
-  - [Added](#added)
-  - [Documentation](#documentation)
 - [[2.0.0] - 2026-06-11](#200-2026-06-11)
-  - [Changed](#changed)
-  - [Removed](#removed)
 - [[1.0.1] - 2026-06-11](#101-2026-06-11)
-  - [Fixed](#fixed)
 - [[1.0.0] - 2026-05-20](#100-2026-05-20)
-  - [Added](#added)
-  - [Documentation](#documentation)
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-09-24
+
+### Fixed
+
+- **FrankenPHP worker mode / long-running processes:** a failed flush (deadlock or other error) no longer leaves the entity manager closed for later attempts and requests. `DeadlockRetryService` resets a closed manager through `Doctrine\Persistence\ManagerRegistry` (wired to `doctrine` when available) before retrying or rethrowing. See `docs/FRANKENPHP-WORKER-AUDIT.md`.
+- `flush()` rethrows the original deadlock when the manager was closed by it, instead of failing on the retry with `EntityManagerClosed` (the unit of work cannot be replayed on a new manager).
+
+### Added
+
+- `DeadlockRetryService::getEntityManager()`: returns the current (open) entity manager, for use inside `retry()` callables.
+- Optional constructor arguments `?ManagerRegistry $managerRegistry = null` and `?string $entityManagerName = null`.
+
+### Changed
+
+- **QA:** PHPStan FrankenPHP rulesets upgraded to `ruleset-classic.neon` + `ruleset-worker-strict.neon` (worker-strict includes worker).
+
+### Documentation
+
+- FrankenPHP worker audit (`docs/FRANKENPHP-WORKER-AUDIT.md`), USAGE / UPGRADING for closed-manager recovery, Spec Kit baseline updated for FR-SVC-003/004 and FR-DI-001.
 
 ## [2.0.9] - 2026-08-24
 
@@ -55,8 +54,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Notes
 
 - **No API or configuration changes** for integrators unless noted above.
-
-[2.0.9]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v2.0.9
 
 ## [2.0.8] - 2026-08-19
 
@@ -217,6 +214,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Installation, configuration, usage, security, upgrading, and FrankenPHP demo guides.
 
+[2.1.0]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v2.1.0
+[2.0.9]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v2.0.9
+[2.0.8]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v2.0.8
+[2.0.7]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v2.0.7
 [2.0.6]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v2.0.6
 [2.0.5]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v2.0.5
 [2.0.4]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v2.0.4
