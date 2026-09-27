@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## Table of contents
 
 - [[Unreleased]](#unreleased)
+- [[2.1.1] - 2026-09-27](#211-2026-09-27)
 - [[2.1.0] - 2026-09-24](#210-2026-09-24)
 - [[2.0.9] - 2026-08-24](#209-2026-08-24)
 - [[2.0.8] - 2026-08-19](#208-2026-08-19)
@@ -22,6 +23,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - [[1.0.0] - 2026-05-20](#100-2026-05-20)
 
 ## [Unreleased]
+
+## [2.1.1] - 2026-09-27
+
+### Added
+
+- **REQ-CS-008:** `igor-php/igor-php` (require-dev only), root `igor.json`, Composer/`Makefile` `igor` target, and `release-check` wiring for FrankenPHP worker-state audit.
+
+### Changed
+
+- **Worker safety (Igor):** justified `// @igor-ignore` annotations and/or `ResetInterface` / request-scoped fixes so `make igor` passes on package `src/`.
+
+[2.1.1]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v2.1.1
 
 ## [2.1.0] - 2026-09-24
 

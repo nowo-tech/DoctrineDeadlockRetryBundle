@@ -4,6 +4,7 @@
 
 
 - [Unreleased](#unreleased)
+- [To 2.1.1](#to-211)
 - [From 2.0.9 to 2.1.0](#from-209-to-210)
 - [From 2.0.8 to 2.0.9](#from-208-to-209)
 - [To 2.0.8](#to-208)
@@ -20,7 +21,18 @@
 
 ## Unreleased
 
+## To 2.1.1
+
+From **2.1.0** — REQ-CS-008 Igor FrankenPHP worker audit (igor-php require-dev, igor.json, make igor).
+
+```bash
+composer update nowo-tech/doctrine-deadlock-retry-bundle
+php bin/console cache:clear
+```
+
 No pending upgrade notes.
+- No application upgrade steps for require-dev Igor tooling (REQ-CS-008). Consumers do not pull `igor-php/igor-php` transitively.
+
 
 ## From 2.0.9 to 2.1.0
 

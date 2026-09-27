@@ -22,6 +22,7 @@ class NowoDoctrineDeadlockRetryBundle extends Bundle
     public function getContainerExtension(): ?ExtensionInterface
     {
         if ($this->extension === null) {
+            // @igor-ignore - Symfony bundle extension lazy-init at boot; not request state
             $this->extension = new NowoDoctrineDeadlockRetryExtension();
         }
 
