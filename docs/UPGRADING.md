@@ -4,6 +4,7 @@
 
 
 - [Unreleased](#unreleased)
+- [To 2.1.2](#to-212)
 - [To 2.1.1](#to-211)
 - [From 2.0.9 to 2.1.0](#from-209-to-210)
 - [From 2.0.8 to 2.0.9](#from-208-to-209)
@@ -20,6 +21,14 @@
 - [To 1.0.0](#to-100)
 
 ## Unreleased
+
+## To 2.1.2
+
+From **2.1.1** — dependency refresh only. No breaking changes. No application upgrade steps.
+
+```bash
+composer update nowo-tech/doctrine-deadlock-retry-bundle
+```
 
 ## To 2.1.1
 

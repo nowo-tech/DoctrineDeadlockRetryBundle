@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## Table of contents
 
 - [[Unreleased]](#unreleased)
+- [[2.1.2] - 2026-10-09](#212-2026-10-09)
 - [[2.1.1] - 2026-09-27](#211-2026-09-27)
 - [[2.1.0] - 2026-09-24](#210-2026-09-24)
 - [[2.0.9] - 2026-08-24](#209-2026-08-24)
@@ -23,6 +24,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - [[1.0.0] - 2026-05-20](#100-2026-05-20)
 
 ## [Unreleased]
+
+## [2.1.2] - 2026-10-09
+
+### Dependencies
+
+- Dependabot: `doctrine/dbal` 4.5.0, `doctrine/orm` 3.7.3, dev `igor-php/igor-php` 0.10, `nowo-tech/phpstan-frankenphp` 1.2.1, `phpstan/phpstan-phpunit`.
+- Lock refresh: `doctrine/orm` 3.7.4; dev PHPStan 2.3.1 (+ phpunit/symfony extensions 2.1), PHPUnit 10.5.66, Rector 2.7.0.
+- Demo (Symfony 8): `doctrine/orm` 3.7.4, `doctrine/dbal` 4.5.0, Twig 3.30.0, HotReloadBundle 1.5.5, TwigInspectorBundle 1.1.7.
+
+[2.1.2]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v2.1.2
 
 ## [2.1.1] - 2026-09-27
 
