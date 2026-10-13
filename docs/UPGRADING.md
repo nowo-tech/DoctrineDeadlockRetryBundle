@@ -2,8 +2,8 @@
 
 ## Table of contents
 
-
 - [Unreleased](#unreleased)
+- [To 2.1.3](#to-213)
 - [To 2.1.2](#to-212)
 - [To 2.1.1](#to-211)
 - [From 2.0.9 to 2.1.0](#from-209-to-210)
@@ -21,6 +21,16 @@
 - [To 1.0.0](#to-100)
 
 ## Unreleased
+
+## To 2.1.3
+
+From **2.1.2** — dependency refresh and repository maintenance.
+
+```bash
+composer update nowo-tech/doctrine-deadlock-retry-bundle
+```
+
+- No breaking changes. No application upgrade steps.
 
 ## To 2.1.2
 
@@ -41,7 +51,6 @@ php bin/console cache:clear
 
 No pending upgrade notes.
 - No application upgrade steps for require-dev Igor tooling (REQ-CS-008). Consumers do not pull `igor-php/igor-php` transitively.
-
 
 ## From 2.0.9 to 2.1.0
 

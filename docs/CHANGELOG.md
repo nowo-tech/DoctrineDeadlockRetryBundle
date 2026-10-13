@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - [[Unreleased]](#unreleased)
   - [Changed](#changed)
+- [[2.1.3] - 2026-10-13](#213-2026-10-13)
 - [[2.1.2] - 2026-10-09](#212-2026-10-09)
 - [[2.1.1] - 2026-09-27](#211-2026-09-27)
 - [[2.1.0] - 2026-09-24](#210-2026-09-24)
@@ -26,9 +27,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [2.1.3] - 2026-10-13
+
 ### Changed
 
 - Development: `composer.json` pins `config.platform.php` to 8.2.0 so the committed lock stays installable on the minimum PHP; CI overrides the platform per matrix cell.
+
+### Dependencies
+
+- `doctrine/orm` 3.7.4 → 3.7.5 (development lock; #52).
+
+[2.1.3]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v2.1.3
 
 ## [2.1.2] - 2026-10-09
 
