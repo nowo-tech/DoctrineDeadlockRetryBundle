@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - [[Unreleased]](#unreleased)
   - [Changed](#changed)
+- [[2.2.0] - 2026-10-13](#220-2026-10-13)
 - [[2.1.3] - 2026-10-13](#213-2026-10-13)
 - [[2.1.2] - 2026-10-09](#212-2026-10-09)
 - [[2.1.1] - 2026-09-27](#211-2026-09-27)
@@ -27,6 +28,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-10-13
+
 ### Added
 
 - `entity_manager` option (default `null` = default entity manager): name of the Doctrine entity manager the service flushes and resets, for multi-EM apps. Wires `doctrine.orm.<name>_entity_manager` and passes the name to `ManagerRegistry`.
@@ -38,6 +41,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Changed
 
 - Symfony constraints normalised to `^6.4 || ^7.4 || ^8.0` (7.0–7.3 were allowed but never tested: the `7.0` CI cell resolved to 7.4 and is dropped). README / INSTALLATION / badge and the CI header comment now match the matrix (6.4, 7.4, 8.0, 8.1).
+
+[2.2.0]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v2.2.0
 
 ## [2.1.3] - 2026-10-13
 

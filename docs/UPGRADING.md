@@ -3,6 +3,7 @@
 ## Table of contents
 
 - [Unreleased](#unreleased)
+- [To 2.2.0](#to-220)
 - [To 2.1.3](#to-213)
 - [To 2.1.2](#to-212)
 - [To 2.1.1](#to-211)
@@ -21,6 +22,14 @@
 - [To 1.0.0](#to-100)
 
 ## Unreleased
+
+## To 2.2.0
+
+From **2.1.3** — deadlock rethrown on closed manager without registry; entity_manager option; Symfony floors aligned.
+
+```bash
+composer update nowo-tech/doctrine-deadlock-retry-bundle
+```
 
 - Requires Symfony 6.4, 7.4 or 8.x (7.0–7.3 are no longer allowed).
 - Without a `ManagerRegistry`, `retry()` now rethrows the original deadlock when it closed the entity manager instead of retrying on the closed manager (which failed with "EntityManager is closed").
