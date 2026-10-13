@@ -934,6 +934,7 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  * }
  * @psalm-type NowoDoctrineDeadlockRetryConfig = array{
  *     default_profile?: scalar|Param|null, // Name of the profile used when none is passed to flush() or retry() // Default: "default"
+ *     entity_manager?: scalar|Param|null, // Doctrine entity manager name (doctrine.orm.entity_managers key) the service flushes and resets; null = default entity manager // Default: null
  *     profiles?: array<string, array{ // Default: {"default":{"max_retries":3,"sleep_ms":100,"rollback_on_deadlock":true}}
  *         max_retries?: int|Param, // Number of retries after the first failed attempt (3 = up to 4 attempts) // Default: 3
  *         sleep_ms?: int|Param, // Milliseconds to wait between attempts // Default: 100
