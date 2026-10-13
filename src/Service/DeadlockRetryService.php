@@ -59,7 +59,8 @@ final class DeadlockRetryService
      * Runs a callable with deadlock retries.
      *
      * The callable should obtain the entity manager on each attempt (e.g. via getEntityManager()) and redo its
-     * whole unit of work, because a closed manager is reset between attempts.
+     * whole unit of work, because a closed manager is reset between attempts. Without a ManagerRegistry a closed
+     * manager cannot be reset, so the original deadlock is rethrown instead of retrying.
      *
      * @template T
      *
@@ -127,7 +128,11 @@ final class DeadlockRetryService
                 $this->prepareForRetry($retryProfile);
                 $managerWasClosed = $this->recoverClosedManager();
 
-                if ($attempt >= $retryProfile->maxAttempts() || ($managerWasClosed && !$replayableAfterClose)) {
+                // A closed manager can only be replaced through the registry: without one, every further attempt
+                // would fail with "EntityManager is closed" and hide the original deadlock.
+                $cannotReplay = $managerWasClosed && (!$replayableAfterClose || !$this->managerRegistry instanceof ManagerRegistry);
+
+                if ($attempt >= $retryProfile->maxAttempts() || $cannotReplay) {
                     throw $throwable;
                 }
 

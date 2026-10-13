@@ -45,6 +45,28 @@ final class NowoDoctrineDeadlockRetryExtensionTest extends TestCase
         $this->assertSame(ContainerInterface::IGNORE_ON_INVALID_REFERENCE, $registry->getInvalidBehavior());
     }
 
+    public function testLoadUsesDefaultEntityManagerWhenNoneConfigured(): void
+    {
+        $this->extension->load([], $this->container);
+
+        $arguments = $this->container->getDefinition(DeadlockRetryService::class)->getArguments();
+
+        $this->assertArrayNotHasKey('$entityManager', $arguments, 'Autowired EntityManagerInterface = default manager');
+        $this->assertArrayNotHasKey('$entityManagerName', $arguments);
+    }
+
+    public function testLoadWiresConfiguredEntityManager(): void
+    {
+        $this->extension->load([['entity_manager' => 'orders']], $this->container);
+
+        $definition    = $this->container->getDefinition(DeadlockRetryService::class);
+        $entityManager = $definition->getArgument('$entityManager');
+
+        $this->assertInstanceOf(Reference::class, $entityManager);
+        $this->assertSame('doctrine.orm.orders_entity_manager', (string) $entityManager);
+        $this->assertSame('orders', $definition->getArgument('$entityManagerName'));
+    }
+
     public function testLoadRegistersDeadlockRetryServiceWithProfiles(): void
     {
         $this->extension->load([

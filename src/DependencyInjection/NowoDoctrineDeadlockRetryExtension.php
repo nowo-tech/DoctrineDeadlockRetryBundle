@@ -13,6 +13,7 @@ use Symfony\Component\DependencyInjection\Extension\Extension;
 use Symfony\Component\DependencyInjection\Loader\YamlFileLoader;
 use Symfony\Component\DependencyInjection\Reference;
 
+use function is_string;
 use function sprintf;
 
 /**
@@ -61,6 +62,12 @@ final class NowoDoctrineDeadlockRetryExtension extends Extension
         $definition = $container->getDefinition(DeadlockRetryService::class);
         $definition->setArgument('$profiles', $profileReferences);
         $definition->setArgument('$defaultProfile', $defaultProfile);
+
+        $entityManagerName = $config['entity_manager'];
+        if (is_string($entityManagerName)) {
+            $definition->setArgument('$entityManager', new Reference(sprintf('doctrine.orm.%s_entity_manager', $entityManagerName)));
+            $definition->setArgument('$entityManagerName', $entityManagerName);
+        }
     }
 
     /**

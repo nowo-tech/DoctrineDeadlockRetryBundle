@@ -39,7 +39,7 @@ $this->deadlockRetry->retry(function (): void {
 
 1. Detects `Doctrine\DBAL\Exception\DeadlockException` (and SQLSTATE `40001` / code `1213` in the chain).
 2. If `rollback_on_deadlock` is enabled and a transaction is active, calls `EntityManager::rollback()`.
-3. If the entity manager is closed, resets it with `ManagerRegistry::resetManager()` (`flush()` then rethrows, see above).
+3. If the entity manager is closed, resets it with `ManagerRegistry::resetManager()` (`flush()` then rethrows, see above). Without a `ManagerRegistry` (no DoctrineBundle `doctrine` service, manual instantiation) a closed manager cannot be reset, so `retry()` also rethrows the original deadlock instead of retrying on a closed manager.
 4. Sleeps for `sleep_ms` from the profile.
 5. Retries until `max_retries` is exhausted, then rethrows the last exception.
 

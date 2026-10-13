@@ -22,6 +22,10 @@
 
 ## Unreleased
 
+- Requires Symfony 6.4, 7.4 or 8.x (7.0–7.3 are no longer allowed).
+- Without a `ManagerRegistry`, `retry()` now rethrows the original deadlock when it closed the entity manager instead of retrying on the closed manager (which failed with "EntityManager is closed").
+- Multi-EM apps can set `entity_manager: <name>`; the default (`null`) keeps using the default entity manager.
+
 ## To 2.1.3
 
 From **2.1.2** — dependency refresh and repository maintenance.

@@ -5,6 +5,7 @@ Root key: `nowo_doctrine_deadlock_retry`.
 | Option | Default | Description |
 |--------|---------|-------------|
 | `default_profile` | `default` | Profile used when `flush()` / `retry()` receive no profile name |
+| `entity_manager` | `null` | Entity manager name (key of `doctrine.orm.entity_managers`) flushed and reset by the service; `null` = default entity manager |
 | `profiles` | see below | Map of named retry policies |
 
 ### Profile options
@@ -35,3 +36,12 @@ nowo_doctrine_deadlock_retry:
 ```
 
 `default_profile` must match a key under `profiles`.
+
+### Multiple entity managers
+
+With several entity managers, point the service at the one whose writes you retry:
+
+```yaml
+nowo_doctrine_deadlock_retry:
+    entity_manager: orders   # uses doctrine.orm.orders_entity_manager and resets "orders" through ManagerRegistry
+```

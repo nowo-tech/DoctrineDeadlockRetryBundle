@@ -6,6 +6,7 @@ namespace Nowo\DoctrineDeadlockRetryBundle\Tests\Unit\DependencyInjection;
 
 use Nowo\DoctrineDeadlockRetryBundle\DependencyInjection\Configuration;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
 use Symfony\Component\Config\Definition\Processor;
 
 /**
@@ -19,6 +20,7 @@ final class ConfigurationTest extends TestCase
         $config = $this->processConfiguration([[]]);
 
         $this->assertSame('default', $config['default_profile']);
+        $this->assertNull($config['entity_manager']);
         $this->assertArrayHasKey('default', $config['profiles']);
         $this->assertSame(3, $config['profiles']['default']['max_retries']);
         $this->assertSame(100, $config['profiles']['default']['sleep_ms']);
@@ -44,6 +46,19 @@ final class ConfigurationTest extends TestCase
         $this->assertSame(10, $config['profiles']['heavy']['max_retries']);
         $this->assertSame(250, $config['profiles']['heavy']['sleep_ms']);
         $this->assertFalse($config['profiles']['heavy']['rollback_on_deadlock']);
+    }
+
+    public function testEntityManagerName(): void
+    {
+        $this->assertSame('orders', $this->processConfiguration([['entity_manager' => 'orders']])['entity_manager']);
+    }
+
+    public function testEmptyEntityManagerNameIsRejected(): void
+    {
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('entity_manager must be null or a non-empty entity manager name.');
+
+        $this->processConfiguration([['entity_manager' => '']]);
     }
 
     /**

@@ -27,6 +27,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `entity_manager` option (default `null` = default entity manager): name of the Doctrine entity manager the service flushes and resets, for multi-EM apps. Wires `doctrine.orm.<name>_entity_manager` and passes the name to `ManagerRegistry`.
+
+### Fixed
+
+- `retry()` without a `ManagerRegistry` kept retrying after a deadlock closed the entity manager, so the next attempt failed with "EntityManager is closed" and the original deadlock was hidden. The original `DeadlockException` is now rethrown when the closed manager cannot be reset.
+
+### Changed
+
+- Symfony constraints normalised to `^6.4 || ^7.4 || ^8.0` (7.0–7.3 were allowed but never tested: the `7.0` CI cell resolved to 7.4 and is dropped). README / INSTALLATION / badge and the CI header comment now match the matrix (6.4, 7.4, 8.0, 8.1).
+
 ## [2.1.3] - 2026-10-13
 
 ### Changed

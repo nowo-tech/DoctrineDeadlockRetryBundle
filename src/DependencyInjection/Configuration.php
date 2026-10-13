@@ -7,6 +7,8 @@ namespace Nowo\DoctrineDeadlockRetryBundle\DependencyInjection;
 use Symfony\Component\Config\Definition\Builder\TreeBuilder;
 use Symfony\Component\Config\Definition\ConfigurationInterface;
 
+use function is_string;
+
 /**
  * Configuration tree for nowo_doctrine_deadlock_retry (retry profiles).
  *
@@ -29,6 +31,14 @@ final class Configuration implements ConfigurationInterface
                     ->info('Name of the profile used when none is passed to flush() or retry()')
                     ->defaultValue('default')
                     ->cannotBeEmpty()
+                ->end()
+                ->scalarNode('entity_manager')
+                    ->info('Doctrine entity manager name (doctrine.orm.entity_managers key) the service flushes and resets; null = default entity manager')
+                    ->defaultNull()
+                    ->validate()
+                        ->ifTrue(static fn (mixed $value): bool => $value !== null && (!is_string($value) || $value === ''))
+                        ->thenInvalid('entity_manager must be null or a non-empty entity manager name.')
+                    ->end()
                 ->end()
                 ->arrayNode('profiles')
                     ->info('Named retry profiles (max_retries, sleep_ms, rollback_on_deadlock)')

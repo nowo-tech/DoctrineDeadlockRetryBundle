@@ -159,6 +159,7 @@ final class DeadlockRetryServiceTest extends TestCase
 
     public function testRetryDetectsDeadlockViaSqlState1213OnDriverException(): void
     {
+        $this->stubOpenManager();
         $driverException = new class('lock', 1213) extends Exception implements DriverExceptionInterface {
             public function getSQLState(): string
             {
@@ -187,6 +188,7 @@ final class DeadlockRetryServiceTest extends TestCase
 
     public function testRetryDetectsDeadlockViaExceptionCode1213(): void
     {
+        $this->stubOpenManager();
         $attempts = 0;
         $service  = $this->createService(['default' => new RetryProfile('default', 1, 0)]);
 
@@ -205,6 +207,7 @@ final class DeadlockRetryServiceTest extends TestCase
 
     public function testRetryDetectsDeadlockInPreviousException(): void
     {
+        $this->stubOpenManager();
         $deadlock = $this->createDeadlockException();
         $wrapped  = new RuntimeException('wrapper', 0, $deadlock);
         $attempts = 0;
@@ -261,6 +264,7 @@ final class DeadlockRetryServiceTest extends TestCase
 
     public function testRetryWaitsAccordingToSleepMs(): void
     {
+        $this->stubOpenManager();
         $deadlock = $this->createDeadlockException();
         $attempts = 0;
 
@@ -353,6 +357,29 @@ final class DeadlockRetryServiceTest extends TestCase
 
         $this->expectExceptionObject($deadlock);
         $service->flush();
+    }
+
+    public function testRetryWithoutRegistryRethrowsOriginalDeadlockWhenManagerIsClosed(): void
+    {
+        $deadlock = $this->createDeadlockException();
+        $this->entityManager->method('isOpen')->willReturn(false);
+        $service  = $this->createService(['default' => new RetryProfile('default', 3, 0)]);
+        $attempts = 0;
+
+        try {
+            $service->retry(static function () use (&$attempts, $deadlock): string {
+                if (++$attempts === 1) {
+                    throw $deadlock;
+                }
+
+                return 'replayed on a closed manager';
+            });
+            self::fail('The deadlock must be rethrown.');
+        } catch (DeadlockException $exception) {
+            self::assertSame($deadlock, $exception, 'The original deadlock must not be hidden by a closed-manager error.');
+        }
+
+        self::assertSame(1, $attempts);
     }
 
     public function testGetEntityManagerWithoutRegistryReturnsInjectedManager(): void
