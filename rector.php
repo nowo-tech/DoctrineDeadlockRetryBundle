@@ -19,4 +19,6 @@ return RectorConfig::configure()
     )
     ->withSkip([
         __DIR__ . '/vendor',
-    ]);
+    ])
+    // Machine-wide cap: at most 2 worker processes; generous timeout for slow (WSL2 / CI) hosts.
+    ->withParallel(300, 2, 10);

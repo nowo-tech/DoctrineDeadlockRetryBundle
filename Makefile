@@ -108,7 +108,7 @@ validate: ensure-up
 
 # Run Igor worker-state audit (REQ-CS-008)
 igor: ensure-up
-	$(COMPOSE) exec -T php composer igor
+	@$(call dc,exec -T $(SERVICE_PHP) composer igor)
 release-check: ensure-up check-no-cursor-coauthor check-open-prs composer-sync cs-fix cs-check rector-dry phpstan igor test-coverage release-check-demos
 
 # REQ-TEST-011 — boot demo stack and assert one HTTP 200

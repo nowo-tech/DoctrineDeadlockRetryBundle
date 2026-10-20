@@ -29,6 +29,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- Makefile `igor` target fixed (it called an undefined `$(COMPOSE)` and failed in `release-check`; REQ-CS-008 / REQ-MAKE-002).
+- Demo: `symfony/debug-bundle` installed and registered for dev/test (REQ-DEMO-001); `make -C demo release-check` runs `update-bundle` in every demo before the tests (new `update-bundle-all`, REQ-DEMO-007).
+- `.scripts/check-no-cursor-coauthor.sh` accepts git worktrees (REQ-GIT-001); Rector capped at 2 parallel workers.
 - Dependencies refreshed (Composer and pnpm/npm lock files of the bundle and its demos, campaign 2026-10-19).
 - `.php-cs-fixer.dist.php`: `new ParallelConfig(2)` (REQ-CS-001).
 - Documentation: wave-1 REQ compliance — README documentation list order (PSR under Additional documentation) and canonical FrankenPHP claim line, CONTRIBUTING Cursor Agent settings and post-release-commit trailer check, canonical bug-report template, doc TOCs, demo `DATABASE_URL` comment.
