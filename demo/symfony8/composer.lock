@@ -930,7 +930,7 @@
         },
         {
             "name": "nowo-tech/doctrine-deadlock-retry-bundle",
-            "version": "dev-chore/req-wave2",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "/var/doctrine-deadlock-retry-bundle",
