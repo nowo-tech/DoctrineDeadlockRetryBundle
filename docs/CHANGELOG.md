@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## Table of contents
 
 - [[Unreleased]](#unreleased)
+- [[2.2.1] - 2026-10-21](#221---2026-10-21)
 - [[2.2.0] - 2026-10-13](#220---2026-10-13)
 - [[2.1.3] - 2026-10-13](#213---2026-10-13)
 - [[2.1.2] - 2026-10-09](#212---2026-10-09)
@@ -27,6 +28,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-10-21
+
+Wave-2 REQ compliance: demo DebugBundle and update-bundle in demo release-check, fixed igor target. See [UPGRADING](UPGRADING.md#to-221).
+
 ### Changed
 
 - Makefile `igor` target fixed (it called an undefined `$(COMPOSE)` and failed in `release-check`; REQ-CS-008 / REQ-MAKE-002).
@@ -35,6 +40,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Dependencies refreshed (Composer and pnpm/npm lock files of the bundle and its demos, campaign 2026-10-19).
 - `.php-cs-fixer.dist.php`: `new ParallelConfig(2)` (REQ-CS-001).
 - Documentation: wave-1 REQ compliance — README documentation list order (PSR under Additional documentation) and canonical FrankenPHP claim line, CONTRIBUTING Cursor Agent settings and post-release-commit trailer check, canonical bug-report template, doc TOCs, demo `DATABASE_URL` comment.
+
+[2.2.1]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v2.2.1
 
 ## [2.2.0] - 2026-10-13
 
