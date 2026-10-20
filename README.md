@@ -8,7 +8,9 @@ Symfony bundle that retries `EntityManager::flush()` and custom operations when 
 
 ![FrankenPHP Friendly Worker Mode](docs/images/frankenphp-friendly.png)
 
-This bundle is **FrankenPHP worker mode friendly**, including when the kernel is **not** reset between requests (see [worker audit](docs/FRANKENPHP-WORKER-AUDIT.md)).
+This bundle is **FrankenPHP worker mode friendly**.
+
+This includes running when the kernel is **not** reset between requests (see [worker audit](docs/FRANKENPHP-WORKER-AUDIT.md)).
 
 ## Features
 
@@ -54,7 +56,6 @@ public function save(Order $order): void
 
 - [Installation](docs/INSTALLATION.md)
 - [Configuration](docs/CONFIGURATION.md)
-- [PSR evaluation (REQ-CS-007)](docs/PSR.md)
 - [Usage](docs/USAGE.md)
 - [Contributing](docs/CONTRIBUTING.md)
 - [Code of Conduct](CODE_OF_CONDUCT.md)
@@ -68,6 +69,7 @@ public function save(Order $order): void
 
 ### Additional documentation
 
+- [PSR evaluation (REQ-CS-007)](docs/PSR.md)
 - [Demo (Symfony 7 & 8)](demo/README.md) — run `make -C demo up-symfony8` from the bundle root.
 - [Demo with FrankenPHP](docs/DEMO-FRANKENPHP.md) — `FRANKENPHP_MODE` (`classic` \| `worker`, default **worker**); `make demo-smoke` (REQ-TEST-011).
 - [FrankenPHP worker audit](docs/FRANKENPHP-WORKER-AUDIT.md) — scenario B (`reset_kernel=false`) compatibility.

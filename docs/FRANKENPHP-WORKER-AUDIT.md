@@ -9,6 +9,17 @@
 | **Verdict** | ✅ **Viable under scenario B** — the service is stateless and resets a closed EntityManager through `ManagerRegistry` before retrying or rethrowing, so a failed flush does not leave later requests with a closed manager |
 | Remediation (2026-09-23 / 2026-09-24) | W-01 resolved (`ManagerRegistry` reset, `flush()` rethrows when the unit of work cannot be replayed, `getEntityManager()` for `retry()` callables); W-02 accepted. Regression tests in `tests/Unit/Service/DeadlockRetryServiceTest.php`. PHPStan `ruleset-classic` + `ruleset-worker-strict` clean. |
 
+## Table of contents
+
+- [Execution model assumed](#execution-model-assumed)
+- [Summary](#summary)
+- [Services reviewed](#services-reviewed)
+- [Findings](#findings)
+  - [W-01 — A deadlock in `flush()` closes the EntityManager; retries and later requests hit a closed manager (Medium)](#w-01--a-deadlock-in-flush-closes-the-entitymanager-retries-and-later-requests-hit-a-closed-manager-medium)
+  - [W-02 — Retry backoff blocks the worker thread with `usleep()` (Low)](#w-02--retry-backoff-blocks-the-worker-thread-with-usleep-low)
+- [Usage recommendations in worker mode](#usage-recommendations-in-worker-mode)
+- [Re-audit triggers](#re-audit-triggers)
+
 ## Execution model assumed
 
 FrankenPHP worker mode boots the Symfony kernel once per worker and serves many requests with the same container. This audit assumes the **strict** variant: the kernel is **not** rebooted between requests, so every shared service, static property and PHP global survives from one request to the next. Two scenarios are evaluated:

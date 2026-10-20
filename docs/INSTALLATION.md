@@ -1,5 +1,12 @@
 # Installation
 
+## Table of contents
+
+- [Requirements](#requirements)
+- [Composer](#composer)
+- [Register the bundle](#register-the-bundle)
+- [Configuration file](#configuration-file)
+
 ## Requirements
 
 - PHP >= 8.2, < 8.6 (Symfony 8.x requires PHP 8.4+)

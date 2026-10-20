@@ -8,6 +8,7 @@
 - [Reporting](#reporting)
 - [Release security checklist (12.4.1)](#release-security-checklist-1241)
 - [AI security audit (REQ-SEC-004)](#ai-security-audit-req-sec-004)
+  - [Residuals (accepted)](#residuals-accepted)
 
 ## Summary
 

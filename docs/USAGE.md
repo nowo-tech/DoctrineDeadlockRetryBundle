@@ -2,6 +2,13 @@
 
 Inject `Nowo\DoctrineDeadlockRetryBundle\Service\DeadlockRetryService` (autowired).
 
+## Table of contents
+
+- [flush()](#flush)
+- [retry()](#retry)
+- [Behaviour on deadlock](#behaviour-on-deadlock)
+- [Important](#important)
+
 ## flush()
 
 Wraps `EntityManager::flush()` with deadlock retries.

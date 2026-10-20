@@ -8,7 +8,7 @@ assignees: ''
 ---
 
 <!--
-- Please do not report an issue for a version of `doctrine-deadlock-retry-bundle` that is no longer supported. See [Version policy](https://github.com/nowo-tech/DoctrineDeadlockRetryBundle#version-policy) and [Supported versions](https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/security/policy#supported-versions) in the repository.
+- Please do not report an issue for a version of `doctrine-deadlock-retry-bundle` that is no longer supported. Currently supported versions are listed here: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle#version-information
 - Please fill in this template according to your issue.
 - Please keep the table shown below at the top of your issue.
 - You can retrieve `doctrine-deadlock-retry-bundle` version by running `composer info | grep "doctrine-deadlock-retry-bundle"`.
