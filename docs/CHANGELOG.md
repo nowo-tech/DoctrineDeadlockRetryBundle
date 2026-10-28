@@ -28,6 +28,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Deadlock detection is limited to driver errors.** Code `1213` matched on any exception in the chain, so an
+  application exception using that code replayed the operation. Only `DeadlockException`, DBAL driver exceptions and
+  `PDOException` (SQLSTATE `40001` or MySQL `1213`) are retried now.
+
+### Documentation
+
+- USAGE: call `retry()` / `flush()` outside your own transactions; a deadlock rollback undoes the outer transaction.
+
 ## [2.2.1] - 2026-10-21
 
 Wave-2 REQ compliance: demo DebugBundle and update-bundle in demo release-check, fixed igor target. See [UPGRADING](UPGRADING.md#to-221).

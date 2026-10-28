@@ -44,7 +44,7 @@ $this->deadlockRetry->retry(function (): void {
 
 ## Behaviour on deadlock
 
-1. Detects `Doctrine\DBAL\Exception\DeadlockException` (and SQLSTATE `40001` / code `1213` in the chain).
+1. Detects `Doctrine\DBAL\Exception\DeadlockException`, and SQLSTATE `40001` / MySQL code `1213` on a driver exception (`Doctrine\DBAL\Driver\Exception`, `PDOException`) anywhere in the `getPrevious()` chain. Other exceptions are never retried, whatever their code.
 2. If `rollback_on_deadlock` is enabled and a transaction is active, calls `EntityManager::rollback()`.
 3. If the entity manager is closed, resets it with `ManagerRegistry::resetManager()` (`flush()` then rethrows, see above). Without a `ManagerRegistry` (no DoctrineBundle `doctrine` service, manual instantiation) a closed manager cannot be reset, so `retry()` also rethrows the original deadlock instead of retrying on a closed manager.
 4. Sleeps for `sleep_ms` from the profile.
@@ -55,3 +55,8 @@ A closed manager is also reset when a non-deadlock exception is rethrown, so a l
 ## Important
 
 A rollback clears the persistence context for the current transaction. Re-apply changes (persist/merge) or repeat the full unit of work before the next flush attempt.
+
+Call `retry()` / `flush()` **outside** any transaction you opened yourself. A deadlock aborts the whole InnoDB transaction,
+and with `rollback_on_deadlock` the rollback also undoes the work of an outer transaction (or savepoint nesting): the
+retry then replays only the inner operation. Put the whole transaction inside the callable instead (for example
+`retry(fn () => $em->wrapInTransaction(...))`).

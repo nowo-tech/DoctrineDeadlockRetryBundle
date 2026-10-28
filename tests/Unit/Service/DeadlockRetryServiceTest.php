@@ -15,8 +15,10 @@ use Exception;
 use Nowo\DoctrineDeadlockRetryBundle\Config\RetryProfile;
 use Nowo\DoctrineDeadlockRetryBundle\Exception\UnknownRetryProfileException;
 use Nowo\DoctrineDeadlockRetryBundle\Service\DeadlockRetryService;
+use PDOException;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use ReflectionProperty;
 use RuntimeException;
 use Throwable;
 
@@ -186,23 +188,67 @@ final class DeadlockRetryServiceTest extends TestCase
         $this->assertSame(2, $attempts);
     }
 
-    public function testRetryDetectsDeadlockViaExceptionCode1213(): void
+    public function testRetryIgnoresCode1213OnNonDriverException(): void
     {
         $this->stubOpenManager();
         $attempts = 0;
+        $service  = $this->createService(['default' => new RetryProfile('default', 3, 0)]);
+
+        $caught = null;
+
+        try {
+            $service->retry(static function () use (&$attempts): never {
+                ++$attempts;
+
+                throw new RuntimeException('not a deadlock', 1213, new RuntimeException('cause', 1213));
+            });
+        } catch (RuntimeException $e) {
+            $caught = $e;
+        }
+
+        $this->assertSame('not a deadlock', $caught->getMessage());
+        $this->assertSame(1, $attempts);
+    }
+
+    public function testRetryDetectsDeadlockViaPdoErrorInfo1213(): void
+    {
+        $this->stubOpenManager();
+        $pdo            = new PDOException('SQLSTATE[HY000]: 1213 Deadlock');
+        $pdo->errorInfo = ['HY000', 1213, 'Deadlock found when trying to get lock'];
+
+        $this->assertSame('ok', $this->retryOnceAfter(new RuntimeException('wrapper', 0, $pdo)));
+    }
+
+    public function testRetryDetectsDeadlockViaPdoSqlState40001(): void
+    {
+        $this->stubOpenManager();
+        $pdo = new PDOException('SQLSTATE[40001]: Serialization failure');
+        (new ReflectionProperty(PDOException::class, 'code'))->setValue($pdo, '40001');
+
+        $this->assertSame('ok', $this->retryOnceAfter($pdo));
+    }
+
+    public function testRetryRethrowsPdoExceptionThatIsNotADeadlock(): void
+    {
+        $this->stubOpenManager();
+        $pdo = new PDOException('SQLSTATE[23000]: Integrity constraint violation');
+
+        $this->expectExceptionObject($pdo);
+        $this->retryOnceAfter($pdo);
+    }
+
+    private function retryOnceAfter(Throwable $first): string
+    {
+        $attempts = 0;
         $service  = $this->createService(['default' => new RetryProfile('default', 1, 0)]);
 
-        $result = $service->retry(static function () use (&$attempts): string {
-            ++$attempts;
-
-            if ($attempts === 1) {
-                throw new RuntimeException('deadlock', 1213);
+        return $service->retry(static function () use ($first, &$attempts): string {
+            if (++$attempts === 1) {
+                throw $first;
             }
 
             return 'ok';
         });
-
-        $this->assertSame('ok', $result);
     }
 
     public function testRetryDetectsDeadlockInPreviousException(): void

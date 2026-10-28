@@ -4,12 +4,13 @@ declare(strict_types=1);
 
 namespace Nowo\DoctrineDeadlockRetryBundle\Service;
 
+use Doctrine\DBAL\Driver\Exception as DriverExceptionInterface;
 use Doctrine\DBAL\Exception\DeadlockException;
-use Doctrine\DBAL\Exception\DriverException;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
 use Nowo\DoctrineDeadlockRetryBundle\Config\RetryProfile;
 use Nowo\DoctrineDeadlockRetryBundle\Exception\UnknownRetryProfileException;
+use PDOException;
 use RuntimeException;
 use Throwable;
 
@@ -212,18 +213,16 @@ final class DeadlockRetryService
                 return true;
             }
 
-            if ($current instanceof DriverException) {
-                $sqlState = $current->getSQLState();
-
-                if ($sqlState === '40001' || $current->getCode() === 1213) {
+            // Only driver-level errors carry a vendor code: an application exception that happens to use code 1213
+            // (or wraps nothing related) must not replay the operation.
+            if ($current instanceof DriverExceptionInterface) {
+                if ($current->getSQLState() === '40001' || $current->getCode() === 1213) {
                     return true;
                 }
-            }
-
-            $code = $current->getCode();
-
-            if ($code === 1213 || $code === '1213') {
-                return true;
+            } elseif ($current instanceof PDOException) {
+                if ($current->getCode() === '40001' || ($current->errorInfo[1] ?? null) === 1213) {
+                    return true;
+                }
             }
 
             $previous = $current->getPrevious();
