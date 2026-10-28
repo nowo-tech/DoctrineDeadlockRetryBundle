@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## Table of contents
 
 - [[Unreleased]](#unreleased)
+- [[2.2.2] - 2026-10-28](#222---2026-10-28)
 - [[2.2.1] - 2026-10-21](#221---2026-10-21)
 - [[2.2.0] - 2026-10-13](#220---2026-10-13)
 - [[2.1.3] - 2026-10-13](#213---2026-10-13)
@@ -28,6 +29,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [2.2.2] - 2026-10-28
+
+DoctrineDeadlockRetry: only driver-level deadlocks (SQLSTATE 40001 / MySQL 1213) are retried. See [UPGRADING](UPGRADING.md#to-222).
+
 ### Fixed
 
 - **Deadlock detection is limited to driver errors.** Code `1213` matched on any exception in the chain, so an
@@ -37,6 +42,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Documentation
 
 - USAGE: call `retry()` / `flush()` outside your own transactions; a deadlock rollback undoes the outer transaction.
+
+[2.2.2]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v2.2.2
 
 ## [2.2.1] - 2026-10-21
 

@@ -3,6 +3,7 @@
 ## Table of contents
 
 - [Unreleased](#unreleased)
+- [To 2.2.2](#to-222)
 - [To 2.2.1](#to-221)
 - [To 2.2.0](#to-220)
 - [To 2.1.3](#to-213)
@@ -23,6 +24,14 @@
 - [To 1.0.0](#to-100)
 
 ## Unreleased
+
+## To 2.2.2
+
+From **2.2.1**:
+
+```bash
+composer update nowo-tech/doctrine-deadlock-retry-bundle
+```
 
 ## To 2.2.1
 
