@@ -5,6 +5,7 @@ use Doctrine\Bundle\DoctrineBundle\DoctrineBundle;
 use Nowo\DoctrineDeadlockRetryBundle\NowoDoctrineDeadlockRetryBundle;
 use Nowo\HotReloadBundle\NowoHotReloadBundle;
 use Nowo\TwigInspectorBundle\NowoTwigInspectorBundle;
+use Nowo\UiKitBundle\NowoUiKitBundle;
 use Symfony\Bundle\DebugBundle\DebugBundle;
 use Symfony\Bundle\FrameworkBundle\FrameworkBundle;
 use Symfony\Bundle\TwigBundle\TwigBundle;
@@ -21,4 +22,5 @@ return [
     NowoHotReloadBundle::class             => ['dev' => true, 'test' => true],
     NowoTwigInspectorBundle::class         => ['dev' => true, 'test' => true],
     TwigExtraBundle::class                 => ['all' => true],
+    NowoUiKitBundle::class                 => ['all' => true],
 ];

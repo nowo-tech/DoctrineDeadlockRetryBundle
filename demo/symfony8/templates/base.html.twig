@@ -1,22 +1,19 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Doctrine Deadlock Retry Bundle - Demo{% endblock %}</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 128 128%22><text y=%221.2em%22 font-size=%2296%22>🔁</text></svg>">
-    {% block stylesheets %}
-    <style>
-        body { font-family: system-ui, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; }
-        code { background: #f0f0f0; padding: 0.2em 0.4em; border-radius: 4px; }
-        .badge { display: inline-block; background: #000; color: #fff; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.85rem; }
-        section { margin: 2rem 0; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid #ddd; }
-    </style>
-    {% endblock %}
-</head>
-<body>
-    {% block body %}{% endblock %}
-</body>
-</html>
+{#- REQ-DEMO-014: the demo shell is UiKit's admin layout with UiKit's default theme (nowo-ui.css from the bundle's own
+    asset package, no CSS framework, no CDN). The masthead lists the demo pages with the active item. -#}
+{% extends '@NowoUiKit/layout/admin.html.twig' %}
+
+{% block nowo_ui_document_title %}{% block title %}Doctrine Deadlock Retry Bundle - Demo{% endblock %}{% endblock %}
+
+{% block nowo_ui_navigation %}
+    {% set _route = app.request.attributes.get('_route') %}
+    <header class="nowo-ui-header" data-testid="demo-masthead">
+        <a class="nowo-ui-brand" href="{{ path('demo_home') }}">Doctrine Deadlock Retry Bundle · Symfony 8</a>
+        <nav class="nowo-ui-menu" aria-label="Demo">
+            {% for item in [{route: 'demo_home', label: 'Overview'}] %}
+                <a class="nowo-ui-link" href="{{ path(item.route) }}"{% if _route == item.route %} aria-current="page"{% endif %}>{{ item.label }}</a>
+            {% endfor %}
+        </nav>
+    </header>
+{% endblock %}
+
+{% block nowo_ui_content %}{% block body %}{% endblock %}{% endblock %}
