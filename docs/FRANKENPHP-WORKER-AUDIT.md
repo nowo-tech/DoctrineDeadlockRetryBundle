@@ -3,8 +3,8 @@
 | Field | Value |
 |-------|-------|
 | Package | `nowo-tech/doctrine-deadlock-retry-bundle` (`symfony-bundle`) |
-| Audited revision | `v2.1.0` (closed-manager recovery + PHPStan worker-strict) |
-| Audit date | 2026-09-24 |
+| Audited revision | `v2.2.2` (re-checked 2026-11-12; closed-manager recovery + PHPStan worker-strict) |
+| Audit date | 2026-09-24, refreshed 2026-11-12 |
 | Method | Manual review of every file under `src/` (service, value object, exception, DI extension, configuration, `services.yaml`) plus the Doctrine ORM / DoctrineBundle code it relies on |
 | **Verdict** | ✅ **Viable under scenario B** — the service is stateless and resets a closed EntityManager through `ManagerRegistry` before retrying or rethrowing, so a failed flush does not leave later requests with a closed manager |
 | Remediation (2026-09-23 / 2026-09-24) | W-01 resolved (`ManagerRegistry` reset, `flush()` rethrows when the unit of work cannot be replayed, `getEntityManager()` for `retry()` callables); W-02 accepted. Regression tests in `tests/Unit/Service/DeadlockRetryServiceTest.php`. PHPStan `ruleset-classic` + `ruleset-worker-strict` clean. |
@@ -56,6 +56,16 @@ A worker demo exists: `demo/symfony8/docker/frankenphp/Caddyfile` (and `demo/sym
 | `nowo_doctrine_deadlock_retry.profile.<name>` (`Config\RetryProfile`) | yes (private) | none (`final readonly`) | ✅ | ✅ |
 
 When a `ManagerRegistry` is available (the `doctrine` service, wired as an optional reference), the service obtains the manager from the registry on each attempt instead of relying on the injected reference. The injected `EntityManagerInterface` is the container's default entity manager service. When DoctrineBundle resets a closed manager it resets that lazy service in place, so the reference held by `DeadlockRetryService` stays valid after a scenario A reset.
+
+## Kept-alive container test
+
+`tests/Integration/Worker/WorkerKeptAliveTest.php::testAlternatingTenantsNeverShareStateAndMemoryStaysFlat` builds ONE
+container and calls the shared `DeadlockRetryService::retry()` 1,200 times alternating two tenants (every third call
+deadlocks once and is retried), never calling `services_resetter` or `kernel.reset`. Each call returns only its own
+tenant's data, no attempt counter or error carries over, and memory growth after warm-up stays under 4 MiB.
+
+The bundle is **safe with kernel reset false**. Rule 7: the bundle flushes the entity manager the host passes (by
+design) but never clears the host's default entity manager; it only resets a manager that a deadlock closed.
 
 ## Findings
 

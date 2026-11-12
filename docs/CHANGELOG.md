@@ -29,6 +29,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Tests
+
+- Kept-alive container test (1,200 calls, two tenants, memory bound) and refreshed `docs/FRANKENPHP-WORKER-AUDIT.md` (REQ-RUNTIME-002).
+
 ## [2.2.2] - 2026-10-28
 
 DoctrineDeadlockRetry: only driver-level deadlocks (SQLSTATE 40001 / MySQL 1213) are retried. See [UPGRADING](UPGRADING.md#to-222).
