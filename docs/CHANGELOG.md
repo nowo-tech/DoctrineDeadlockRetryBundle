@@ -29,6 +29,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `Contract\DeadlockRetryInterface` (`flush()`, `retry()`, `getProfileNames()`, `getDefaultProfileName()`), implemented by `DeadlockRetryService` and aliased in the container (REQ-ARCH-001 rule 1). It carries no Doctrine type; `getEntityManager()` stays on the concrete service.
+
 ### Changed
 
 - Demo uses the UiKit base style (REQ-DEMO-014)

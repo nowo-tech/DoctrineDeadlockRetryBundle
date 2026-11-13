@@ -1,6 +1,6 @@
 # Usage
 
-Inject `Nowo\DoctrineDeadlockRetryBundle\Service\DeadlockRetryService` (autowired).
+Inject `Nowo\DoctrineDeadlockRetryBundle\Contract\DeadlockRetryInterface` (autowired; aliased to `Service\DeadlockRetryService`, which still works as a type hint). Re-alias the interface to replace the implementation. `getEntityManager()` exists only on the concrete service.
 
 ## Table of contents
 

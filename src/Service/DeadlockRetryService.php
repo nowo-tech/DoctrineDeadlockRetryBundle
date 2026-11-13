@@ -9,6 +9,7 @@ use Doctrine\DBAL\Exception\DeadlockException;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
 use Nowo\DoctrineDeadlockRetryBundle\Config\RetryProfile;
+use Nowo\DoctrineDeadlockRetryBundle\Contract\DeadlockRetryInterface;
 use Nowo\DoctrineDeadlockRetryBundle\Exception\UnknownRetryProfileException;
 use PDOException;
 use RuntimeException;
@@ -24,7 +25,7 @@ use Throwable;
  * @author Héctor Franco Aceituno <hectorfranco@nowo.tech>
  * @copyright 2026 Nowo.tech
  */
-final class DeadlockRetryService
+final class DeadlockRetryService implements DeadlockRetryInterface
 {
     /**
      * @param array<string, RetryProfile> $profiles

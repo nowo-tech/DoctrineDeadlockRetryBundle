@@ -9,3 +9,5 @@ services:
       $profiles: []
       $defaultProfile: 'default'
       $managerRegistry: '@?doctrine'
+
+  Nowo\DoctrineDeadlockRetryBundle\Contract\DeadlockRetryInterface: '@Nowo\DoctrineDeadlockRetryBundle\Service\DeadlockRetryService'

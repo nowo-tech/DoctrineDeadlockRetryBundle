@@ -3,6 +3,7 @@
 ## Table of contents
 
 - [Unreleased](#unreleased)
+- [To 2.3.0](#to-230)
 - [To 2.2.2](#to-222)
 - [To 2.2.1](#to-221)
 - [To 2.2.0](#to-220)
@@ -24,6 +25,18 @@
 - [To 1.0.0](#to-100)
 
 ## Unreleased
+
+## To 2.3.0
+
+From **2.2.2**: minor, strictly additive, no configuration change.
+
+```bash
+composer update nowo-tech/doctrine-deadlock-retry-bundle
+```
+
+- New `Contract\DeadlockRetryInterface`, aliased to `DeadlockRetryService`. Type-hint the interface; a host can re-alias it to its
+  own implementation. `getEntityManager()` is not part of the interface (no Doctrine type in the port); keep using the concrete
+  service for it, or take the manager from your own registry inside the `retry()` callable.
 
 ## To 2.2.2
 
