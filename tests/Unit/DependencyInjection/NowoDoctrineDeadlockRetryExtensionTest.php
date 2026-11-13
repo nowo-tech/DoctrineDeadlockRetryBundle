@@ -6,9 +6,11 @@ namespace Nowo\DoctrineDeadlockRetryBundle\Tests\Unit\DependencyInjection;
 
 use InvalidArgumentException;
 use Nowo\DoctrineDeadlockRetryBundle\Config\RetryProfile;
+use Nowo\DoctrineDeadlockRetryBundle\Contract\DeadlockRetryInterface;
 use Nowo\DoctrineDeadlockRetryBundle\DependencyInjection\NowoDoctrineDeadlockRetryExtension;
 use Nowo\DoctrineDeadlockRetryBundle\Service\DeadlockRetryService;
 use PHPUnit\Framework\TestCase;
+use stdClass;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\DependencyInjection\Reference;
@@ -110,5 +112,19 @@ final class NowoDoctrineDeadlockRetryExtensionTest extends TestCase
                 ],
             ],
         ], $this->container);
+    }
+
+    public function testServiceInterfaceIsAliasedAndHostCanOverrideIt(): void
+    {
+        $this->extension->load([], $this->container);
+
+        $this->assertTrue($this->container->hasAlias(DeadlockRetryInterface::class));
+        $this->assertSame(DeadlockRetryService::class, (string) $this->container->getAlias(DeadlockRetryInterface::class));
+        $this->assertContains(DeadlockRetryInterface::class, class_implements(DeadlockRetryService::class));
+
+        $this->container->register('app.deadlock_retry', stdClass::class);
+        $this->container->setAlias(DeadlockRetryInterface::class, 'app.deadlock_retry');
+        $this->assertSame('app.deadlock_retry', (string) $this->container->getAlias(DeadlockRetryInterface::class));
+        $this->assertTrue($this->container->hasDefinition(DeadlockRetryService::class));
     }
 }
