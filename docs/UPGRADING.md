@@ -4,7 +4,6 @@
 
 - [Unreleased](#unreleased)
 - [To 2.4.0](#to-240)
-- [To 2.4.0](#to-240-1)
 - [To 2.3.0](#to-230)
 - [To 2.2.2](#to-222)
 - [To 2.2.1](#to-221)
@@ -27,14 +26,6 @@
 - [To 1.0.0](#to-100)
 
 ## Unreleased
-
-## To 2.4.0
-
-From **2.3.0**:
-
-```bash
-composer update nowo-tech/doctrine-deadlock-retry-bundle
-```
 
 ## To 2.4.0
 
