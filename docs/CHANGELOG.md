@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## Table of contents
 
 - [[Unreleased]](#unreleased)
+- [[2.4.0] - 2026-11-13](#240---2026-11-13)
 - [[2.3.0] - 2026-11-13](#230---2026-11-13)
 - [[2.2.2] - 2026-10-28](#222---2026-10-28)
 - [[2.2.1] - 2026-10-21](#221---2026-10-21)
@@ -30,9 +31,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-11-13
+
 ### Added
 
 - `Contract\DeadlockRetryInterface` (`flush()`, `retry()`, `getProfileNames()`, `getDefaultProfileName()`), implemented by `DeadlockRetryService` and aliased in the container (REQ-ARCH-001 rule 1). It carries no Doctrine type; `getEntityManager()` stays on the concrete service.
+
+[2.4.0]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v2.4.0
 
 ## [2.3.0] - 2026-11-13
 
