@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## Table of contents
 
 - [[Unreleased]](#unreleased)
+- [[2.3.0] - 2026-11-13](#230---2026-11-13)
 - [[2.2.2] - 2026-10-28](#222---2026-10-28)
 - [[2.2.1] - 2026-10-21](#221---2026-10-21)
 - [[2.2.0] - 2026-10-13](#220---2026-10-13)
@@ -29,6 +30,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-11-13
+
 ### Changed
 
 - Demo uses the UiKit base style (REQ-DEMO-014)
@@ -36,6 +39,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Tests
 
 - Kept-alive container test (1,200 calls, two tenants, memory bound) and refreshed `docs/FRANKENPHP-WORKER-AUDIT.md` (REQ-RUNTIME-002).
+
+[2.3.0]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v2.3.0
 
 ## [2.2.2] - 2026-10-28
 
