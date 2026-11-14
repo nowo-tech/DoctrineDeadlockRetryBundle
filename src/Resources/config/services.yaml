@@ -4,10 +4,16 @@ services:
     autoconfigure: true
     public: false
 
+  Nowo\DoctrineDeadlockRetryBundle\Failure\TransientFailureClassifier: ~
+
+  Nowo\DoctrineDeadlockRetryBundle\Connection\ConnectionRepairer: ~
+
   Nowo\DoctrineDeadlockRetryBundle\Service\DeadlockRetryService:
     arguments:
       $profiles: []
       $defaultProfile: 'default'
       $managerRegistry: '@?doctrine'
+      $logger: '@?logger'
+      $randomizer: null
 
   Nowo\DoctrineDeadlockRetryBundle\Contract\DeadlockRetryInterface: '@Nowo\DoctrineDeadlockRetryBundle\Service\DeadlockRetryService'
