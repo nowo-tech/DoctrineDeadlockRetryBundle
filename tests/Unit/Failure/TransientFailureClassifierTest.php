@@ -12,6 +12,7 @@ use Doctrine\DBAL\Exception\RetryableException;
 use Exception;
 use Nowo\DoctrineDeadlockRetryBundle\Failure\TransientFailureClassifier;
 use Nowo\DoctrineDeadlockRetryBundle\Failure\TransientFailureKind;
+use Nowo\TransactionContract\TransientStorageFailure;
 use PDOException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -42,6 +43,7 @@ final class TransientFailureClassifierTest extends TestCase
         yield 'host savepoint 1305' => [self::lostSavepoint('SAVEPOINT my_own does not exist'), null];
         yield '1305 chained to its deadlock' => [new DriverException(self::driver(1305, '42000', 'SAVEPOINT DOCTRINE_2 does not exist', new DeadlockException(self::driver(1213, '40001'), null)), null), TransientFailureKind::Deadlock];
         yield 'other RetryableException' => [new class('retry') extends Exception implements RetryableException {}, TransientFailureKind::Retryable];
+        yield 'TransientStorageFailure' => [new TransientStorageFailure(), TransientFailureKind::Retryable];
         yield 'application code 1213' => [new RuntimeException('not a deadlock', 1213), null];
         yield 'wrapped deadlock' => [new RuntimeException('wrapper', 0, new DeadlockException(self::driver(1213, '40001'), null)), TransientFailureKind::Deadlock];
         yield 'constraint violation' => [new DriverException(self::driver(1062, '23000'), null), null];

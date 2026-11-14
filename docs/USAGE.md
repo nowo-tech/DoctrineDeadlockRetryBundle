@@ -201,35 +201,39 @@ final class OrderController
 
 ### DDD / hexagonal host example
 
-The application layer depends on a transaction port and on a "try again later" exception with no framework type.
-The shared port is `nowo-tech/transaction-contract`
-(`TransactionRunnerInterface::run(callable): mixed`, `TransientStorageFailure` with `retryAfterSeconds()`); until the
-bundle ships its adapter for it, write the adapter yourself, as in
-[DDD / hexagonal host](#ddd--hexagonal-host):
+The application layer depends on `nowo-tech/transaction-contract` (framework-free:
+`TransactionRunnerInterface::run(callable): mixed` and `TransientStorageFailure` with `retryAfterSeconds()`). The
+bundle aliases `TransactionRunnerInterface` to its adapter, `Transaction\DeadlockRetryTransactionRunner`:
 
 ```php
-use Nowo\DoctrineDeadlockRetryBundle\Failure\TransientFailureClassifier;
-use Nowo\DoctrineDeadlockRetryBundle\Service\DeadlockRetryService;
 use Nowo\TransactionContract\TransactionRunnerInterface;
-use Nowo\TransactionContract\TransientStorageFailure;
 
-final readonly class DoctrineTransactionRunner implements TransactionRunnerInterface
+final readonly class PayOrderHandler
 {
-    public function __construct(
-        private DeadlockRetryService $retry,
-        private TransientFailureClassifier $classifier,
-    ) {
+    public function __construct(private TransactionRunnerInterface $transactions, private OrderRepository $orders)
+    {
     }
 
-    public function run(callable $operation): mixed
+    public function __invoke(PayOrder $command): void
     {
-        try {
-            return $this->retry->retry(fn (): mixed => $this->retry->getEntityManager()->wrapInTransaction(static fn (): mixed => $operation()));
-        } catch (\Throwable $failure) {
-            throw $this->classifier->isTransient($failure) ? TransientStorageFailure::fromPrevious($failure, 1) : $failure;
-        }
+        $this->transactions->run(function () use ($command): void {
+            $this->orders->get($command->orderId)->pay($command->amount);   // loaded per attempt
+        });
     }
 }
+```
+
+The adapter runs the operation in `wrapInTransaction()` (flush + commit) through `retry()` with the
+`transaction_runner.profile` (default profile when null). When retries are exhausted, or the call runs inside a
+caller's transaction, a transient failure becomes `TransientStorageFailure::fromPrevious($failure,
+retry_after_seconds)`; `http_mapping` answers it with 503 + `Retry-After`. A `TransientStorageFailure` thrown by a
+nested runner is itself transient, so the outermost runner replays the whole unit of work.
+
+```yaml
+nowo_doctrine_deadlock_retry:
+    retry_after_seconds: 2
+    transaction_runner:
+        profile: null
 ```
 
 `TransientFailureClassifier` and `ConnectionRepairer` are public services; inject them.
@@ -350,5 +354,4 @@ The test suite covers this setup with a plain-PHP aggregate, a `TransactionRunne
 - `getEntityManager()` is only on the concrete `DeadlockRetryService` (it returns a Doctrine type, so it stays out of
   the port).
 - One entity manager per configuration (`entity_manager`); the worker guard covers every manager.
-- The bundle does not yet ship an adapter for `nowo-tech/transaction-contract` (see
-  [DDD / hexagonal host example](#ddd--hexagonal-host-example)).
+- The `TransactionRunnerInterface` adapter works on the configured `entity_manager` only.

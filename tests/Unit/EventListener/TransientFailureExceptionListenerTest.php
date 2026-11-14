@@ -20,10 +20,6 @@ use Symfony\Component\HttpKernel\HttpKernelInterface;
 use Symfony\Component\HttpKernel\KernelEvents;
 use Throwable;
 
-use function dirname;
-
-require_once dirname(__DIR__, 2) . '/Fixtures/TransactionContract/TransientStorageFailure.php';
-
 /**
  * @author Héctor Franco Aceituno <hectorfranco@nowo.tech>
  * @copyright 2026 Nowo.tech

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nowo\DoctrineDeadlockRetryBundle\EventListener;
 
 use Nowo\DoctrineDeadlockRetryBundle\Failure\TransientFailureClassifier;
+use Nowo\TransactionContract\TransientStorageFailure;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -15,11 +16,8 @@ use Symfony\Component\HttpKernel\Exception\ServiceUnavailableHttpException;
 use Symfony\Component\HttpKernel\KernelEvents;
 use Throwable;
 
-use function is_a;
-use function is_callable;
 use function is_int;
 use function is_string;
-use function max;
 use function str_starts_with;
 
 /**
@@ -47,9 +45,6 @@ final class TransientFailureExceptionListener implements EventSubscriberInterfac
 
     /** Before Symfony's ErrorListener (-128) and API Platform's error handling, after the security listener (1). */
     public const PRIORITY = 0;
-
-    /** Framework-free failure of nowo-tech/transaction-contract, matched by name: that package is optional. */
-    public const TRANSIENT_STORAGE_FAILURE = 'Nowo\TransactionContract\TransientStorageFailure';
 
     public const UNAVAILABLE_DETAIL = 'The request could not be completed because of a temporary storage conflict. Retry later.';
     public const CONFLICT_DETAIL    = 'The request conflicts with a concurrent change. Reload the resource and retry.';
@@ -154,31 +149,19 @@ final class TransientFailureExceptionListener implements EventSubscriberInterfac
     private function retryAfter(Throwable $throwable): ?int
     {
         for ($current = $throwable; $current instanceof Throwable; $current = $current->getPrevious()) {
-            if (is_a($current, self::TRANSIENT_STORAGE_FAILURE)) {
-                $hint = $this->hint($current);
-
-                return is_int($hint) ? max(0, $hint) : $this->retryAfterSeconds;
+            if ($current instanceof TransientStorageFailure) {
+                return $current->retryAfterSeconds() ?? $this->retryAfterSeconds;
             }
         }
 
         return $this->classifier->isTransient($throwable) ? $this->retryAfterSeconds : null;
     }
 
-    /**
-     * Reads TransientStorageFailure::retryAfterSeconds() without a compile-time dependency on the contract package.
-     */
-    private function hint(object $failure): mixed
-    {
-        $accessor = [$failure, 'retryAfterSeconds'];
-
-        return is_callable($accessor) ? $accessor() : null;
-    }
-
     private function isConflict(Throwable $throwable): bool
     {
         for ($current = $throwable; $current instanceof Throwable; $current = $current->getPrevious()) {
             foreach ($this->conflictExceptions as $class) {
-                if (is_a($current, $class)) {
+                if ($current instanceof $class) {
                     return true;
                 }
             }

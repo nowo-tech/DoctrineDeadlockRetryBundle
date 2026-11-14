@@ -13,7 +13,9 @@ use Nowo\DoctrineDeadlockRetryBundle\DependencyInjection\NowoDoctrineDeadlockRet
 use Nowo\DoctrineDeadlockRetryBundle\EventListener\TransientFailureExceptionListener;
 use Nowo\DoctrineDeadlockRetryBundle\EventListener\WorkerGuardSubscriber;
 use Nowo\DoctrineDeadlockRetryBundle\Service\DeadlockRetryService;
+use Nowo\DoctrineDeadlockRetryBundle\Transaction\DeadlockRetryTransactionRunner;
 use Nowo\DoctrineDeadlockRetryBundle\Worker\ConnectionGuard;
+use Nowo\TransactionContract\TransactionRunnerInterface;
 use PHPUnit\Framework\TestCase;
 use stdClass;
 use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
@@ -133,6 +135,16 @@ final class NowoDoctrineDeadlockRetryExtensionTest extends TestCase
         $this->expectExceptionMessage('sleep_ms is an alias of backoff_base_ms');
 
         $this->extension->load([['profiles' => ['default' => ['sleep_ms' => 10, 'backoff_base_ms' => 20]]]], $this->container);
+    }
+
+    public function testTransactionRunnerAdapterIsRegisteredAndAliased(): void
+    {
+        $this->extension->load([['retry_after_seconds' => 3, 'transaction_runner' => ['profile' => 'default']]], $this->container);
+
+        $runner = $this->container->getDefinition(DeadlockRetryTransactionRunner::class);
+        $this->assertSame(3, $runner->getArgument('$retryAfterSeconds'));
+        $this->assertSame('default', $runner->getArgument('$profile'));
+        $this->assertSame(DeadlockRetryTransactionRunner::class, (string) $this->container->getAlias(TransactionRunnerInterface::class));
     }
 
     public function testWorkerGuardAndHttpMappingAreOffByDefault(): void

@@ -27,6 +27,6 @@ enum TransientFailureKind: string
      */
     case LostSavepoint = 'lost_savepoint';
 
-    /** Any other Doctrine DBAL RetryableException. */
+    /** Any other Doctrine DBAL RetryableException, or nowo-tech/transaction-contract's TransientStorageFailure. */
     case Retryable = 'retryable';
 }

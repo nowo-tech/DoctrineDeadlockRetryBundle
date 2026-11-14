@@ -10,7 +10,9 @@ use Nowo\DoctrineDeadlockRetryBundle\EventListener\TransientFailureExceptionList
 use Nowo\DoctrineDeadlockRetryBundle\EventListener\WorkerGuardSubscriber;
 use Nowo\DoctrineDeadlockRetryBundle\Failure\TransientFailureClassifier;
 use Nowo\DoctrineDeadlockRetryBundle\Service\DeadlockRetryService;
+use Nowo\DoctrineDeadlockRetryBundle\Transaction\DeadlockRetryTransactionRunner;
 use Nowo\DoctrineDeadlockRetryBundle\Worker\ConnectionGuard;
+use Nowo\TransactionContract\TransactionRunnerInterface;
 use Symfony\Component\Config\FileLocator;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\ContainerInterface;
@@ -81,6 +83,16 @@ final class NowoDoctrineDeadlockRetryExtension extends Extension
             $definition->setArgument('$entityManager', new Reference(sprintf('doctrine.orm.%s_entity_manager', $entityManagerName)));
             $definition->setArgument('$entityManagerName', $entityManagerName);
         }
+
+        $container
+            ->register(DeadlockRetryTransactionRunner::class, DeadlockRetryTransactionRunner::class)
+            ->setArguments([
+                '$retry'             => new Reference(DeadlockRetryService::class),
+                '$classifier'        => new Reference(TransientFailureClassifier::class),
+                '$retryAfterSeconds' => (int) $config['retry_after_seconds'],
+                '$profile'           => $config['transaction_runner']['profile'] ?? null,
+            ]);
+        $container->setAlias(TransactionRunnerInterface::class, DeadlockRetryTransactionRunner::class);
 
         $this->registerWorkerGuard($config['worker_guard'], $container);
         $this->registerHttpMapping($config['http_mapping'], (int) $config['retry_after_seconds'], $container);

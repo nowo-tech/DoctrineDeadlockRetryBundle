@@ -7,7 +7,8 @@ Root key: `nowo_doctrine_deadlock_retry`.
 | `default_profile` | `default` | Profile used when `flush()` / `retry()` receive no profile name |
 | `entity_manager` | `null` | Entity manager name (key of `doctrine.orm.entity_managers`) flushed and reset by the service; `null` = default entity manager |
 | `profiles` | see below | Map of named retry policies |
-| `retry_after_seconds` | `1` | `Retry-After` of a 503 from `http_mapping` |
+| `retry_after_seconds` | `1` | `Retry-After` of a 503 from `http_mapping`, and hint of the adapter's `TransientStorageFailure` |
+| `transaction_runner.profile` | `null` | Profile of the `TransactionRunnerInterface` adapter; `null` = `default_profile` |
 | `worker_guard` | disabled | Repairs leftover transactions and closed entity managers on `kernel.request` / `kernel.terminate` (see below) |
 | `http_mapping` | disabled | Maps transient failures to 503 + `Retry-After` and conflicts to 409 (see below) |
 

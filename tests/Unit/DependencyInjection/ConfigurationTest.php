@@ -30,6 +30,7 @@ final class ConfigurationTest extends TestCase
         $this->assertTrue($config['profiles']['default']['retry_lock_wait_timeout']);
         $this->assertTrue($config['profiles']['default']['rollback_on_deadlock']);
         $this->assertSame(1, $config['retry_after_seconds']);
+        $this->assertNull($config['transaction_runner']['profile']);
         $this->assertFalse($config['worker_guard']['enabled']);
         $this->assertFalse($config['http_mapping']['enabled']);
     }

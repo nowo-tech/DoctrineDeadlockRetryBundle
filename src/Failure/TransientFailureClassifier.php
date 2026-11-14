@@ -8,6 +8,7 @@ use Doctrine\DBAL\Driver\Exception as DriverExceptionInterface;
 use Doctrine\DBAL\Exception\DeadlockException;
 use Doctrine\DBAL\Exception\LockWaitTimeoutException;
 use Doctrine\DBAL\Exception\RetryableException;
+use Nowo\TransactionContract\TransientStorageFailure;
 use PDOException;
 use Throwable;
 
@@ -64,6 +65,10 @@ final class TransientFailureClassifier
 
     private function classifyOne(Throwable $throwable): ?TransientFailureKind
     {
+        if ($throwable instanceof TransientStorageFailure) {
+            return TransientFailureKind::Retryable;
+        }
+
         if ($throwable instanceof LockWaitTimeoutException) {
             return TransientFailureKind::LockWaitTimeout;
         }

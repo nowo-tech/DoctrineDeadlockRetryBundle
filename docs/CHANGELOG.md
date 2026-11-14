@@ -61,11 +61,15 @@ backoff is jittered by default and lock wait timeouts are retried. See [UPGRADIN
   `Worker\ConnectionGuard::repair()` for Messenger or custom loops. Works with FrankenPHP worker mode and
   `kernel.reset` disabled.
 - **HTTP mapping** (opt-in, `http_mapping.enabled`): a `kernel.exception` listener maps transient failures (and
-  `Nowo\TransactionContract\TransientStorageFailure`, by name) to 503 with `Retry-After` (`retry_after_seconds`,
+  `Nowo\TransactionContract\TransientStorageFailure`) to 503 with `Retry-After` (`retry_after_seconds`,
   or the exception's hint), and `conflict_exceptions` (default `OptimisticLockException`,
   `UniqueConstraintViolationException`) to 409. Scoped by `paths` / `routes` prefixes or global; `format: exception`
   keeps the host's own rendering (problem+json), `format: problem_json` answers RFC 9457 directly; the client never
   sees SQL.
+- **`nowo-tech/transaction-contract` adapter**: `Transaction\DeadlockRetryTransactionRunner` implements
+  `TransactionRunnerInterface` (aliased): `wrapInTransaction()` through `retry()`, transient failures rethrown as
+  `TransientStorageFailure` with `retry_after_seconds`; option `transaction_runner.profile`. `TransientStorageFailure`
+  counts as transient, so the outermost runner replays a nested one. New requirement `nowo-tech/transaction-contract ^1.0`.
 - `Connection\ConnectionRepairer`, a public service for bundles that clean up after a failed unit of work.
 - Optional PSR-3 logger on `DeadlockRetryService`: retries at `info`, repairs at `notice`, never SQL.
 
