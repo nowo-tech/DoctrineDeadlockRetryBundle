@@ -9,7 +9,7 @@ COMPOSE_BIN := $(shell docker compose version >/dev/null 2>&1 && echo "docker co
 dc = $(SHELL) -c '$(COMPOSE_BIN) -f $(COMPOSE_FILE) $(1)'
 SERVICE_PHP := php
 
-.PHONY: help up down down-dev build shell install assets test test-coverage coverage-php-percent cs-check cs-fix qa clean release-check release-check-demos demo-smoke composer-sync rector rector-dry phpstan igor update validate setup-hooks check-no-cursor-coauthor check-open-prs strip-cursor-coauthor-from-history
+.PHONY: test-db help up down down-dev build shell install assets test test-coverage coverage-php-percent cs-check cs-fix qa clean release-check release-check-demos demo-smoke composer-sync rector rector-dry phpstan igor update validate setup-hooks check-no-cursor-coauthor check-open-prs strip-cursor-coauthor-from-history
 
 help:
 	@echo "Doctrine Deadlock Retry Bundle - Development Commands"
@@ -26,6 +26,7 @@ help:
 	@echo "  assets          No-op (no frontend in this bundle)"
 	@echo "  test            Run PHPUnit tests"
 	@echo "  test-coverage   Run tests with code coverage"
+	@echo "  test-db         Start MySQL 8.4, MariaDB 11.4, PostgreSQL 16 and run the real-database tests"
 	@echo "  cs-check        Check code style"
 	@echo "  cs-fix          Fix code style"
 	@echo "  rector          Apply Rector refactoring"
@@ -76,6 +77,12 @@ ensure-up:
 
 test: ensure-up
 	@$(call dc,exec $(SERVICE_PHP) composer test)
+
+# Real deadlock / lock wait / serialization tests (tests/Database): starts the "db" profile servers, runs, stops them.
+test-db: ensure-up
+	@$(call dc,--profile db up -d --wait mysql mariadb postgres)
+	@$(call dc,exec -T -e DDRB_MYSQL_URL=mysql://root:root@mysql:3306/ddrb -e DDRB_MARIADB_URL=mysql://root:root@mariadb:3306/ddrb -e DDRB_POSTGRES_URL=pgsql://postgres:root@postgres:5432/ddrb $(SERVICE_PHP) vendor/bin/phpunit --testsuite Database --no-coverage --fail-on-skipped); \
+	status=$$?; $(call dc,--profile db stop mysql mariadb postgres); exit $$status
 
 test-coverage: ensure-up
 	@$(call dc,exec $(SERVICE_PHP) composer test-coverage) | tee coverage-php.txt

@@ -4,9 +4,12 @@ RUN apk add --no-cache \
     git \
     unzip \
     bash \
-    libzip-dev
+    libzip-dev \
+    libpq
 
-RUN docker-php-ext-install -j$(nproc) zip
+RUN apk add --no-cache --virtual .pq-build postgresql-dev \
+    && docker-php-ext-install -j$(nproc) zip pdo_mysql pdo_pgsql \
+    && apk del .pq-build
 
 RUN apk add --no-cache $PHPIZE_DEPS \
     && pecl install pcov \

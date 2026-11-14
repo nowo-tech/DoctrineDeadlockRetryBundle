@@ -12,7 +12,57 @@ services:
       - coverage-data:/app/coverage
     environment:
       - COMPOSER_ALLOW_SUPERUSER=1
+      # Real-database tests (tests/Database) run only when these DSNs are set; `make test-db` starts the servers.
+      - DDRB_MYSQL_URL=${DDRB_MYSQL_URL:-}
+      - DDRB_MARIADB_URL=${DDRB_MARIADB_URL:-}
+      - DDRB_POSTGRES_URL=${DDRB_POSTGRES_URL:-}
     command: ["tail", "-f", "/dev/null"]
+    networks:
+      - doctrine-deadlock-retry-bundle-network
+
+  # Database servers for the real deadlock / lock-wait / serialization tests (profile "db": not started by `make up`).
+  mysql:
+    image: mysql:8.4
+    profiles: ["db"]
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: ddrb
+    tmpfs:
+      - /var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-proot"]
+      interval: 2s
+      retries: 60
+    networks:
+      - doctrine-deadlock-retry-bundle-network
+
+  mariadb:
+    image: mariadb:11.4
+    profiles: ["db"]
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+      MARIADB_DATABASE: ddrb
+    tmpfs:
+      - /var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 2s
+      retries: 60
+    networks:
+      - doctrine-deadlock-retry-bundle-network
+
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["db"]
+    environment:
+      POSTGRES_PASSWORD: root
+      POSTGRES_DB: ddrb
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 2s
+      retries: 60
     networks:
       - doctrine-deadlock-retry-bundle-network
 

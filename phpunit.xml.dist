@@ -16,6 +16,10 @@
         <testsuite name="Integration">
             <directory>tests/Integration</directory>
         </testsuite>
+        <!-- Real MySQL / MariaDB / PostgreSQL tests: skipped unless DDRB_*_URL is set (make test-db). -->
+        <testsuite name="Database">
+            <directory>tests/Database</directory>
+        </testsuite>
     </testsuites>
 
     <source restrictDeprecations="true" restrictNotices="true" restrictWarnings="true">
