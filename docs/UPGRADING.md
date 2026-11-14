@@ -27,6 +27,10 @@
 
 ## Unreleased
 
+Target 2.4.1: no code or configuration change. DDD / hexagonal hosts: see
+[Usage → Using it from a DDD / hexagonal application](USAGE.md#using-it-from-a-ddd--hexagonal-application) to put the
+bundle behind your own transaction port.
+
 ## To 2.4.0
 
 From **2.3.0**: minor, strictly additive, no configuration change. 2.3.0 was tagged by mistake without this code; this release contains the features first announced for 2.3.0.

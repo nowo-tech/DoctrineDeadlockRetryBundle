@@ -31,6 +31,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+Target 2.4.1 (docs and tests only, no code change).
+
+### Documentation
+
+- USAGE: "Using it from a DDD / hexagonal application" with a standard Symfony host section and a DDD / hexagonal
+  host section (own `TransactionRunner` port, adapter on `DeadlockRetryInterface`, events after commit), and a
+  statement that the bundle never flushes or commits on its own (REQ-ARCH-001).
+
+### Tests
+
+- DDD host case: plain-PHP aggregate, host `TransactionRunner` port and an adapter on the container's
+  `DeadlockRetryInterface` alias; a deadlock closes the manager, the unit of work is replayed on the reset manager and
+  the domain event is published once, after commit.
+
 ## [2.4.0] - 2026-11-13
 
 ### Added

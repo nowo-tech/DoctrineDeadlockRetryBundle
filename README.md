@@ -56,7 +56,7 @@ public function save(Order $order): void
 
 - [Installation](docs/INSTALLATION.md)
 - [Configuration](docs/CONFIGURATION.md)
-- [Usage](docs/USAGE.md)
+- [Usage](docs/USAGE.md) — standard Symfony host and [DDD / hexagonal host](docs/USAGE.md#using-it-from-a-ddd--hexagonal-application)
 - [Contributing](docs/CONTRIBUTING.md)
 - [Code of Conduct](CODE_OF_CONDUCT.md)
 - [Changelog](docs/CHANGELOG.md)

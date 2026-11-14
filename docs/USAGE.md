@@ -8,6 +8,10 @@ Inject `Nowo\DoctrineDeadlockRetryBundle\Contract\DeadlockRetryInterface` (autow
 - [retry()](#retry)
 - [Behaviour on deadlock](#behaviour-on-deadlock)
 - [Important](#important)
+- [Using it from a DDD / hexagonal application](#using-it-from-a-ddd--hexagonal-application)
+  - [Standard Symfony host](#standard-symfony-host)
+  - [DDD / hexagonal host](#ddd--hexagonal-host)
+  - [Known limitations](#known-limitations)
 
 ## flush()
 
@@ -60,3 +64,95 @@ Call `retry()` / `flush()` **outside** any transaction you opened yourself. A de
 and with `rollback_on_deadlock` the rollback also undoes the work of an outer transaction (or savepoint nesting): the
 retry then replays only the inner operation. Put the whole transaction inside the callable instead (for example
 `retry(fn () => $em->wrapInTransaction(...))`).
+
+## Using it from a DDD / hexagonal application
+
+DoctrineDeadlockRetryBundle is an **infrastructure** helper: one service that replays a Doctrine unit of work on
+deadlock. It has no entities, mapped superclasses, traits, listeners or events, works with any mapping driver
+(attributes, XML, PHP) and never touches your domain classes. It **never flushes or commits on its own**: it flushes
+only when you call `flush()`, and inside `retry()` it only runs your callable. Configuration comes from the bundle
+config tree (`nowo_doctrine_deadlock_retry`); there is no provider port to implement and no InstanceSettings
+dependency.
+
+Both paths below are supported; the standard one is the zero-config default.
+
+### Standard Symfony host
+
+Inject `DeadlockRetryInterface` (or the concrete `DeadlockRetryService` when you need `getEntityManager()`) in your
+services and controllers and use [`flush()`](#flush) and [`retry()`](#retry) as shown above. Nothing else to do.
+
+### DDD / hexagonal host
+
+Keep the bundle out of the domain and application layers. Declare your own transaction port in the application
+layer and implement it in infrastructure with `DeadlockRetryInterface`, which carries no Doctrine or Symfony type
+(REQ-ARCH-001 rules 1 and 3):
+
+```php
+// Application layer: your port, framework-free
+interface TransactionRunner
+{
+    /**
+     * @template T
+     * @param callable(): T $work
+     * @return T
+     */
+    public function run(callable $work): mixed;
+}
+
+// Infrastructure adapter
+use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\Persistence\ManagerRegistry;
+use Nowo\DoctrineDeadlockRetryBundle\Contract\DeadlockRetryInterface;
+
+final readonly class DeadlockRetryTransactionRunner implements TransactionRunner
+{
+    public function __construct(
+        private DeadlockRetryInterface $retry,
+        private ManagerRegistry $registry,
+    ) {
+    }
+
+    public function run(callable $work): mixed
+    {
+        return $this->retry->retry(function () use ($work): mixed {
+            /** @var EntityManagerInterface $em fetched per attempt: a closed manager is reset between attempts */
+            $em = $this->registry->getManager();
+
+            return $em->wrapInTransaction(static fn (): mixed => $work());
+        });
+    }
+}
+```
+
+```yaml
+# config/services.yaml
+services:
+    App\Application\TransactionRunner: '@App\Infrastructure\Persistence\DeadlockRetryTransactionRunner'
+```
+
+An application service then depends only on `TransactionRunner`, and its tests use an in-memory runner. The adapter
+itself can be tested with a double of `DeadlockRetryInterface`.
+
+Rules that matter for the adapter:
+
+- The callable must redo the **whole** unit of work (load aggregates, apply the command, save): a deadlock closes the
+  entity manager, which the bundle resets between attempts. Repositories must obtain the manager per attempt
+  (`ManagerRegistry::getManager()`), not keep a stale reference to a closed one.
+- Call it **outside** any transaction you opened yourself; open the transaction inside the callable (see
+  [Important](#important)).
+- Release domain events recorded by aggregates only after `run()` returns (after commit), so a replayed attempt
+  does not publish them twice.
+- When every attempt fails, the original Doctrine exception is rethrown; translate it in the adapter if your
+  application layer expects its own exception type.
+- To use another entity manager than the configured `entity_manager`, pass its name to `getManager()` in the adapter
+  and set the same name in the bundle config, so the bundle resets that manager.
+
+The test suite covers this setup with a plain-PHP aggregate, a `TransactionRunner` port and the adapter above
+(`tests/Integration/DddHost/`), next to the standard-host tests.
+
+### Known limitations
+
+- `getEntityManager()` is only on the concrete `DeadlockRetryService` (it returns a Doctrine type, so it stays out of
+  the port).
+- No event or log entry per retry; no jitter or backoff (fixed `sleep_ms`).
+- One entity manager per configuration (`entity_manager`).
