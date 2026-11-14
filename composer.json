@@ -37,7 +37,7 @@
         "doctrine/dbal": "^3.8.2 || ^4.0",
         "doctrine/doctrine-bundle": "^2.8 || ^3.0",
         "doctrine/orm": "^2.13 || ^3.0",
-        "nowo-tech/transaction-contract": "^1.0",
+        "nowo-tech/transaction-contract": "^1.0@dev",
         "psr/log": "^1.1 || ^2.0 || ^3.0",
         "symfony/config": "^6.4 || ^7.4 || ^8.0",
         "symfony/dependency-injection": "^6.4 || ^7.4 || ^8.0",
@@ -58,6 +58,12 @@
         "symfony/cache": "^6.4 || ^7.4 || ^8.0",
         "symfony/yaml": "^6.4 || ^7.4 || ^8.0"
     },
+    "repositories": [
+        {
+            "type": "vcs",
+            "url": "https://github.com/nowo-tech/transaction-contract"
+        }
+    ],
     "autoload": {
         "psr-4": {
             "Nowo\\DoctrineDeadlockRetryBundle\\": "src/"

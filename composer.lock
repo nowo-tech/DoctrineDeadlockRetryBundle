@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "7d7e4479d6a1d4ae8ce500e8629bed25",
+    "content-hash": "fe99c456b265295a3234389423734d3b",
     "packages": [
         {
             "name": "doctrine/collections",
@@ -934,6 +934,105 @@
                 "source": "https://github.com/doctrine/sql-formatter/tree/1.5.4"
             },
             "time": "2026-02-08T16:21:46+00:00"
+        },
+        {
+            "name": "nowo-tech/transaction-contract",
+            "version": "dev-main",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/nowo-tech/transaction-contract.git",
+                "reference": "ef8023d569ff7db1a689c57d4046ded773aa1650"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/nowo-tech/transaction-contract/zipball/ef8023d569ff7db1a689c57d4046ded773aa1650",
+                "reference": "ef8023d569ff7db1a689c57d4046ded773aa1650",
+                "shasum": ""
+            },
+            "require": {
+                "php": ">=8.2 <8.6"
+            },
+            "require-dev": {
+                "friendsofphp/php-cs-fixer": "^3.0",
+                "phpstan/phpstan": "^2.0",
+                "phpstan/phpstan-phpunit": "^2.0",
+                "phpunit/phpunit": "^10.0 || ^11.0",
+                "rector/rector": "^2.0"
+            },
+            "default-branch": true,
+            "type": "library",
+            "extra": {
+                "branch-alias": {
+                    "dev-main": "1.0.x-dev"
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Nowo\\TransactionContract\\": "src/"
+                }
+            },
+            "autoload-dev": {
+                "psr-4": {
+                    "Nowo\\TransactionContract\\Tests\\": "tests/"
+                }
+            },
+            "scripts": {
+                "test": [
+                    "vendor/bin/phpunit --color=always"
+                ],
+                "cs-check": [
+                    "vendor/bin/php-cs-fixer fix --dry-run --diff"
+                ],
+                "cs-fix": [
+                    "vendor/bin/php-cs-fixer fix"
+                ],
+                "phpstan": [
+                    "phpstan analyse --memory-limit=512M"
+                ],
+                "rector-dry": [
+                    "rector process --dry-run --no-progress-bar"
+                ],
+                "qa": [
+                    "@cs-check",
+                    "@phpstan",
+                    "@test"
+                ],
+                "test-coverage": [
+                    "XDEBUG_MODE=coverage vendor/bin/phpunit --colors=always --coverage-text --coverage-clover coverage.xml"
+                ]
+            },
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Héctor Franco Aceituno",
+                    "email": "hectorfranco@nowo.tech",
+                    "homepage": "https://github.com/HecFranco",
+                    "role": "Developer"
+                },
+                {
+                    "name": "Nowo.tech",
+                    "homepage": "https://nowo.tech"
+                }
+            ],
+            "description": "Framework-free transaction port: TransactionRunnerInterface::run(callable) and the TransientStorageFailure exception with a Retry-After hint. No dependencies beyond PHP: no Symfony, no Doctrine.",
+            "homepage": "https://github.com/nowo-tech/transaction-contract",
+            "keywords": [
+                "contracts",
+                "ddd",
+                "deadlock",
+                "hexagonal",
+                "port",
+                "retry",
+                "transaction",
+                "unit-of-work"
+            ],
+            "support": {
+                "issues": "https://github.com/nowo-tech/transaction-contract/issues",
+                "source": "https://github.com/nowo-tech/transaction-contract"
+            },
+            "time": "2026-11-14T22:22:31+00:00"
         },
         {
             "name": "psr/cache",
@@ -7161,7 +7260,9 @@
     ],
     "aliases": [],
     "minimum-stability": "stable",
-    "stability-flags": {},
+    "stability-flags": {
+        "nowo-tech/transaction-contract": 20
+    },
     "prefer-stable": true,
     "prefer-lowest": false,
     "platform": {
