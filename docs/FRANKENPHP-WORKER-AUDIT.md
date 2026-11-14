@@ -54,6 +54,15 @@ A worker demo exists: `demo/symfony8/docker/frankenphp/Caddyfile` (and `demo/sym
 |---------|--------|---------------|------------|------------|
 | `Nowo\DoctrineDeadlockRetryBundle\Service\DeadlockRetryService` | yes (private, autowirable) | none (`readonly` EntityManager, optional `ManagerRegistry` and manager name, profile map, default name) | ✅ | ✅ |
 | `nowo_doctrine_deadlock_retry.profile.<name>` (`Config\RetryProfile`) | yes (private) | none (`final readonly`) | ✅ | ✅ |
+| `Failure\TransientFailureClassifier`, `Connection\ConnectionRepairer` | yes (private) | none (no properties) | ✅ | ✅ |
+| `Worker\ConnectionGuard` + `EventListener\WorkerGuardSubscriber` (opt-in `worker_guard`) | yes (private) | none (`readonly` registry, logger, connection list, flag) | ✅ | ✅ |
+| `EventListener\TransientFailureExceptionListener` (opt-in `http_mapping`) | yes (private) | none (`readonly` configuration and classifier) | ✅ | ✅ |
+
+**Unreleased (3.0.0):** after a nested deadlock on MySQL / MariaDB, DBAL 4 left the connection at nesting level 2
+when the rollback failed with 1305, and that state survived into every later request of the worker (scenario B and
+A alike: `kernel.reset` does not touch DBAL connections). The service now closes such a connection, and the opt-in
+worker guard repairs any connection a request left in a transaction, on `kernel.request` and `kernel.terminate`. The
+`Random\Randomizer` used for the backoff jitter uses the default secure engine and keeps no per-request state.
 
 When a `ManagerRegistry` is available (the `doctrine` service, wired as an optional reference), the service obtains the manager from the registry on each attempt instead of relying on the injected reference. The injected `EntityManagerInterface` is the container's default entity manager service. When DoctrineBundle resets a closed manager it resets that lazy service in place, so the reference held by `DeadlockRetryService` stays valid after a scenario A reset.
 

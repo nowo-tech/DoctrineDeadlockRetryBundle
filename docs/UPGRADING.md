@@ -27,9 +27,36 @@
 
 ## Unreleased
 
-Target 2.4.1: no code or configuration change. DDD / hexagonal hosts: see
-[Usage → Using it from a DDD / hexagonal application](USAGE.md#using-it-from-a-ddd--hexagonal-application) to put the
-bundle behind your own transaction port.
+Target **3.0.0** (from 2.4.x). Major: the behaviour after a failure changes. No configuration change is required.
+
+```bash
+composer require nowo-tech/doctrine-deadlock-retry-bundle:^3.0
+```
+
+What changes, and what to check:
+
+1. **The connection is closed, not rolled back, after a failure.** When an operation started at nesting level 0
+   fails and leaves a transaction active, the service calls `Connection::close()` instead of
+   `EntityManager::rollback()`. The next query reconnects. Session state set by hand on the connection (a `SET` you
+   ran once, temporary tables) is lost; put such settings in a DBAL middleware or the connection's `driverOptions`
+   so a reconnect restores them. Set `rollback_on_deadlock: false` on a profile to skip the repair entirely (not
+   recommended).
+2. **Nothing is retried inside your own transaction.** If you call `flush()` / `retry()` while a transaction is open
+   (nesting level > 0), a transient failure is rethrown after the levels the operation opened are rolled back (or the
+   connection closed). Move the retry around the outermost transaction:
+   `retry(fn () => $em->wrapInTransaction(...))`.
+3. **Delays are jittered and exponential.** `sleep_ms` keeps working as the backoff base. To keep 2.x's fixed sleep,
+   set `jitter: none` and `backoff_max_ms` equal to the base.
+4. **Lock wait timeouts (1205) are retried** by default. Each attempt can wait `innodb_lock_wait_timeout` (50 s by
+   default), so for web requests lower that timeout or set `retry_lock_wait_timeout: false`.
+5. A failure whose message only reads `1305 SAVEPOINT DOCTRINE_n does not exist` is now treated as transient.
+
+Opt-in, nothing happens until you enable them:
+
+- `worker_guard.enabled: true` for FrankenPHP worker mode, RoadRunner and other long-running workers;
+- `http_mapping.enabled: true` to answer 503 + `Retry-After` / 409 instead of 500.
+
+See [Usage → High-load readiness](USAGE.md#high-load-readiness).
 
 ## To 2.4.0
 

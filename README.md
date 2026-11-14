@@ -4,7 +4,7 @@
 
 > ⭐ **Found this useful?** Install from Packagist and give it a star on GitHub.
 
-Symfony bundle that retries `EntityManager::flush()` and custom operations when Doctrine DBAL raises a deadlock (`SQLSTATE[40001]`, MySQL error 1213).
+Symfony bundle that retries `EntityManager::flush()` and custom operations on transient Doctrine DBAL failures (deadlocks, lock wait timeouts, serialization failures), repairs the connection after a failure, and optionally guards long-running workers and maps exhausted retries to 503 + `Retry-After`.
 
 ![FrankenPHP Friendly Worker Mode](docs/images/frankenphp-friendly.png)
 
@@ -15,9 +15,11 @@ This includes running when the kernel is **not** reset between requests (see [wo
 ## Features
 
 - **DeadlockRetryService**: `flush(?string $profile)`, `retry(callable $operation, ?string $profile)`, and `getEntityManager()`.
-- **Named profiles**: configure `max_retries`, `sleep_ms`, and `rollback_on_deadlock` per use case.
+- **Named profiles**: `max_retries`, exponential backoff with full jitter (`backoff_base_ms`, alias `sleep_ms`; `backoff_max_ms`; `jitter`), `retry_lock_wait_timeout` and `rollback_on_deadlock` per use case.
 - **Default profile**: used when no profile name is passed.
-- Detects `DeadlockException` and related driver errors in the exception chain.
+- Detects every transient failure in the exception chain: `RetryableException`, MySQL / MariaDB 1213 and 1205, SQLSTATE 40001 / 40P01, and the 1305 "SAVEPOINT DOCTRINE_n does not exist" a nested deadlock turns into.
+- After a failure, closes a connection left in a transaction instead of a rollback that fails again (DBAL 4 nested transactions), so no worker keeps a poisoned nesting level.
+- Opt-in **worker guard** (`kernel.request` / `kernel.terminate`) and **HTTP mapping** (503 + `Retry-After`, 409 for conflicts). See [high-load readiness](docs/USAGE.md#high-load-readiness).
 - Resets a closed EntityManager through `ManagerRegistry` so long-running workers do not keep serving a closed manager.
 
 ## Version policy
