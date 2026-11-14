@@ -15,6 +15,7 @@ use Nowo\DoctrineDeadlockRetryBundle\Service\DeadlockRetryService;
 use Nowo\DoctrineDeadlockRetryBundle\Tests\Fixtures\DddHost\Application\PayOrderHandler;
 use Nowo\DoctrineDeadlockRetryBundle\Tests\Fixtures\DddHost\Infrastructure\DeadlockRetryTransactionRunner;
 use Nowo\DoctrineDeadlockRetryBundle\Tests\Fixtures\DddHost\Infrastructure\InMemoryOrderRepository;
+use Nowo\DoctrineDeadlockRetryBundle\Tests\Fixtures\DddHost\Infrastructure\TransactionalEntityManager;
 use Nowo\DoctrineDeadlockRetryBundle\Tests\Integration\Service\DeadlockRetryBundleIntegrationTest;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
@@ -134,7 +135,7 @@ final class DddHostTransactionRunnerTest extends TestCase
         $connection = $this->createStub(Connection::class);
         $connection->method('isTransactionActive')->willReturn(false);
 
-        $em = $this->createStub(EntityManagerInterface::class);
+        $em = $this->createStub(TransactionalEntityManager::class);
         $em->method('getConnection')->willReturn($connection);
         $em->method('isOpen')->willReturnCallback($isOpen);
         $em->method('wrapInTransaction')->willReturnCallback($wrap);

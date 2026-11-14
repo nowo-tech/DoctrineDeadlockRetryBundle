@@ -126,7 +126,8 @@ final readonly class DeadlockRetryTransactionRunner implements TransactionRunner
 
 ```yaml
 # config/services.yaml
-App\Application\TransactionRunner: '@App\Infrastructure\Persistence\DeadlockRetryTransactionRunner'
+services:
+    App\Application\TransactionRunner: '@App\Infrastructure\Persistence\DeadlockRetryTransactionRunner'
 ```
 
 An application service then depends only on `TransactionRunner`, and its tests use an in-memory runner. The adapter
