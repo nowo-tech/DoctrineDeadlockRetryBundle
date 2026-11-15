@@ -97,8 +97,24 @@ final class WorkerGuardTest extends DatabaseTestCase
         self::assertSame('kernel.request', $this->logger->records[0][2]['phase'] ?? null);
     }
 
-    private function subscriber(): WorkerGuardSubscriber
+    #[DataProvider('allServers')]
+    public function testTerminateClearsPendingChangesSoTheNextRequestDoesNotCommitThem(string $server): void
     {
-        return new WorkerGuardSubscriber(new ConnectionGuard($this->registry, $this->logger));
+        $this->boot($server);
+        $manager = $this->manager();
+        $manager->persist(new Counter(77));   // a failed unit of work left this behind, unflushed
+
+        $this->subscriber(clearManagers: true)->onKernelTerminate(new TerminateEvent($this->createMock(HttpKernelInterface::class), Request::create('/'), new Response()));
+
+        self::assertSame([], $manager->getUnitOfWork()->getScheduledEntityInsertions());
+        self::assertSame('default', $this->logger->records[0][2]['manager'] ?? null);
+
+        $manager->flush();   // the next request's flush
+        self::assertSame(0, (int) $this->freshValue('SELECT COUNT(*) FROM ddrb_counter WHERE id = 77'));
+    }
+
+    private function subscriber(bool $clearManagers = false): WorkerGuardSubscriber
+    {
+        return new WorkerGuardSubscriber(new ConnectionGuard($this->registry, $this->logger, clearManagers: $clearManagers));
     }
 }

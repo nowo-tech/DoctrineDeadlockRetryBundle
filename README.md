@@ -15,10 +15,10 @@ This includes running when the kernel is **not** reset between requests (see [wo
 ## Features
 
 - **DeadlockRetryService**: `flush(?string $profile)`, `retry(callable $operation, ?string $profile)`, and `getEntityManager()`.
-- **Named profiles**: `max_retries`, exponential backoff with full jitter (`backoff_base_ms`, alias `sleep_ms`; `backoff_max_ms`; `jitter`), `retry_lock_wait_timeout` and `rollback_on_deadlock` per use case.
+- **Named profiles**: `max_retries`, exponential backoff with full jitter (`backoff_base_ms`, alias `sleep_ms`; `backoff_max_ms`; `jitter`), `retry_lock_wait_timeout`, a `max_total_ms` budget and `rollback_on_deadlock` per use case. Requires DBAL 4 / ORM 3.
 - **Default profile**: used when no profile name is passed.
-- Detects every transient failure in the exception chain: `RetryableException`, MySQL / MariaDB 1213 and 1205, SQLSTATE 40001 / 40P01, and the 1305 "SAVEPOINT DOCTRINE_n does not exist" a nested deadlock turns into.
-- After a failure, closes a connection left in a transaction instead of a rollback that fails again (DBAL 4 nested transactions), so no worker keeps a poisoned nesting level.
+- Detects transient failures in the exception chain: `RetryableException`, MySQL / MariaDB 1213, 1205 and 1020, SQLSTATE 40001 / 40P01 / 55P03 (the ORM's 1305 after a nested deadlock counts through the deadlock it carries).
+- After a failure, rolls back what the operation left open and closes the connection only when that rollback fails (DBAL 4 nested deadlocks), so no worker keeps a poisoned nesting level; `retry()` clears the entity manager before a replay.
 - Opt-in **worker guard** (`kernel.request` / `kernel.terminate`) and **HTTP mapping** (503 + `Retry-After`, 409 for conflicts). See [high-load readiness](docs/USAGE.md#high-load-readiness).
 - Resets a closed EntityManager through `ManagerRegistry` so long-running workers do not keep serving a closed manager.
 

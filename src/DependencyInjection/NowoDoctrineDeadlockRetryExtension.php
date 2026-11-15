@@ -6,21 +6,24 @@ namespace Nowo\DoctrineDeadlockRetryBundle\DependencyInjection;
 
 use InvalidArgumentException;
 use Nowo\DoctrineDeadlockRetryBundle\Config\RetryProfile;
+use Nowo\DoctrineDeadlockRetryBundle\DependencyInjection\Compiler\NowoDoctrineDeadlockRetryServiceIds;
+use Nowo\DoctrineDeadlockRetryBundle\EventListener\MessengerWorkerGuardSubscriber;
 use Nowo\DoctrineDeadlockRetryBundle\EventListener\TransientFailureExceptionListener;
 use Nowo\DoctrineDeadlockRetryBundle\EventListener\WorkerGuardSubscriber;
 use Nowo\DoctrineDeadlockRetryBundle\Failure\TransientFailureClassifier;
 use Nowo\DoctrineDeadlockRetryBundle\Service\DeadlockRetryService;
 use Nowo\DoctrineDeadlockRetryBundle\Transaction\DeadlockRetryTransactionRunner;
 use Nowo\DoctrineDeadlockRetryBundle\Worker\ConnectionGuard;
-use Nowo\TransactionContract\TransactionRunnerInterface;
 use Symfony\Component\Config\FileLocator;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\DependencyInjection\Extension\Extension;
 use Symfony\Component\DependencyInjection\Loader\YamlFileLoader;
 use Symfony\Component\DependencyInjection\Reference;
+use Symfony\Component\Messenger\Event\WorkerMessageHandledEvent;
 
 use function array_values;
+use function class_exists;
 use function is_int;
 use function is_string;
 use function max;
@@ -62,6 +65,7 @@ final class NowoDoctrineDeadlockRetryExtension extends Extension
                     max($baseMs, (int) $profileConfig['backoff_max_ms']),
                     $profileConfig['jitter'] === 'full',
                     (bool) $profileConfig['retry_lock_wait_timeout'],
+                    is_int($profileConfig['max_total_ms'] ?? null) ? $profileConfig['max_total_ms'] : null,
                 ])
                 ->setPublic(false);
 
@@ -85,14 +89,15 @@ final class NowoDoctrineDeadlockRetryExtension extends Extension
         }
 
         $container
-            ->register(DeadlockRetryTransactionRunner::class, DeadlockRetryTransactionRunner::class)
+            ->register(NowoDoctrineDeadlockRetryServiceIds::TRANSACTION_RUNNER, DeadlockRetryTransactionRunner::class)
             ->setArguments([
                 '$retry'             => new Reference(DeadlockRetryService::class),
                 '$classifier'        => new Reference(TransientFailureClassifier::class),
                 '$retryAfterSeconds' => (int) $config['retry_after_seconds'],
                 '$profile'           => $config['transaction_runner']['profile'] ?? null,
             ]);
-        $container->setAlias(TransactionRunnerInterface::class, DeadlockRetryTransactionRunner::class);
+        $container->setAlias(DeadlockRetryTransactionRunner::class, NowoDoctrineDeadlockRetryServiceIds::TRANSACTION_RUNNER);
+        // TransactionRunnerInterface is aliased by TransactionRunnerAliasPass, only when nothing defines it.
 
         $this->registerWorkerGuard($config['worker_guard'], $container);
         $this->registerHttpMapping($config['http_mapping'], (int) $config['retry_after_seconds'], $container);
@@ -114,6 +119,8 @@ final class NowoDoctrineDeadlockRetryExtension extends Extension
                 '$logger'              => new Reference('logger', ContainerInterface::NULL_ON_INVALID_REFERENCE),
                 '$connections'         => array_values((array) $config['connections']),
                 '$resetClosedManagers' => (bool) $config['reset_closed_managers'],
+                '$clearManagers'       => (bool) $config['clear_managers'],
+                '$container'           => new Reference('service_container'),
             ])
             ->setPublic(false);
 
@@ -121,6 +128,13 @@ final class NowoDoctrineDeadlockRetryExtension extends Extension
             ->register(WorkerGuardSubscriber::class, WorkerGuardSubscriber::class)
             ->setArguments([new Reference(ConnectionGuard::class)])
             ->addTag('kernel.event_subscriber');
+
+        if (($config['messenger'] ?? false) && class_exists(WorkerMessageHandledEvent::class)) {
+            $container
+                ->register(MessengerWorkerGuardSubscriber::class, MessengerWorkerGuardSubscriber::class)
+                ->setArguments([new Reference(ConnectionGuard::class)])
+                ->addTag('kernel.event_subscriber');
+        }
     }
 
     /**

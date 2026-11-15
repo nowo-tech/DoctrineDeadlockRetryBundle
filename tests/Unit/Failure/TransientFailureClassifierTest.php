@@ -38,12 +38,15 @@ final class TransientFailureClassifierTest extends TestCase
         yield 'LockWaitTimeoutException' => [new LockWaitTimeoutException(self::driver(1205, 'HY000'), null), TransientFailureKind::LockWaitTimeout];
         yield 'raw driver 1205' => [self::driver(1205, 'HY000'), TransientFailureKind::LockWaitTimeout];
         yield 'raw driver 1213' => [self::driver(1213, '40001'), TransientFailureKind::Deadlock];
-        yield 'lost DBAL 4 savepoint 1305' => [self::lostSavepoint('SAVEPOINT DOCTRINE_2 does not exist'), TransientFailureKind::LostSavepoint];
-        yield 'lost DBAL 3 savepoint 1305' => [self::lostSavepoint('SAVEPOINT DOCTRINE2_SAVEPOINT_3 does not exist'), TransientFailureKind::LostSavepoint];
-        yield 'host savepoint 1305' => [self::lostSavepoint('SAVEPOINT my_own does not exist'), null];
+        yield 'lost savepoint 1305 alone (implicit commit)' => [self::lostSavepoint('SAVEPOINT DOCTRINE_2 does not exist'), null];
+        yield 'lost savepoint 1305 over a unique violation' => [new DriverException(self::driver(1305, '42000', 'SAVEPOINT DOCTRINE_2 does not exist', new DriverException(self::driver(1062, '23000'), null)), null), null];
+        yield 'PostgreSQL lock_timeout 55P03' => [new DriverException(self::driver(7, '55P03'), null), TransientFailureKind::LockWaitTimeout];
+        yield 'MariaDB snapshot conflict 1020' => [new DriverException(self::driver(1020, 'HY000'), null), TransientFailureKind::SerializationFailure];
         yield '1305 chained to its deadlock' => [new DriverException(self::driver(1305, '42000', 'SAVEPOINT DOCTRINE_2 does not exist', new DeadlockException(self::driver(1213, '40001'), null)), null), TransientFailureKind::Deadlock];
         yield 'other RetryableException' => [new class('retry') extends Exception implements RetryableException {}, TransientFailureKind::Retryable];
-        yield 'TransientStorageFailure' => [new TransientStorageFailure(), TransientFailureKind::Retryable];
+        yield 'TransientStorageFailure without a storage error' => [new TransientStorageFailure(), TransientFailureKind::Retryable];
+        yield 'TransientStorageFailure over a lock wait' => [TransientStorageFailure::fromPrevious(new LockWaitTimeoutException(self::driver(1205, 'HY000'), null)), TransientFailureKind::LockWaitTimeout];
+        yield 'TransientStorageFailure over a non-storage error' => [TransientStorageFailure::fromPrevious(new RuntimeException('other')), null];
         yield 'application code 1213' => [new RuntimeException('not a deadlock', 1213), null];
         yield 'wrapped deadlock' => [new RuntimeException('wrapper', 0, new DeadlockException(self::driver(1213, '40001'), null)), TransientFailureKind::Deadlock];
         yield 'constraint violation' => [new DriverException(self::driver(1062, '23000'), null), null];
@@ -60,6 +63,17 @@ final class TransientFailureClassifierTest extends TestCase
 
         self::assertSame($expected, $classifier->classify($failure));
         self::assertSame($expected instanceof TransientFailureKind, $classifier->isTransient($failure));
+    }
+
+    public function testTransientCauseIsTheFirstTransientExceptionOfTheChain(): void
+    {
+        $deadlock   = new DeadlockException(self::driver(1213, '40001'), null);
+        $lost       = new DriverException(self::driver(1305, '42000', 'SAVEPOINT DOCTRINE_2 does not exist', $deadlock), null);
+        $classifier = new TransientFailureClassifier();
+
+        self::assertSame($deadlock, $classifier->transientCause($lost));
+        self::assertSame($deadlock, $classifier->transientCause($deadlock));
+        self::assertNull($classifier->transientCause(new RuntimeException('bug')));
     }
 
     private static function driver(int $code, ?string $sqlState, string $message = 'driver error', ?Throwable $previous = null): DriverExceptionInterface

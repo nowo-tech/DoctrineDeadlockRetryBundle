@@ -26,7 +26,7 @@ help:
 	@echo "  assets          No-op (no frontend in this bundle)"
 	@echo "  test            Run PHPUnit tests"
 	@echo "  test-coverage   Run tests with code coverage"
-	@echo "  test-db         Start MySQL 8.4, MariaDB 11.4, PostgreSQL 16 and run the real-database tests"
+	@echo "  test-db         Start MySQL 8.4, MariaDB 11.4 and 11.8, PostgreSQL 16 and run the real-database tests"
 	@echo "  cs-check        Check code style"
 	@echo "  cs-fix          Fix code style"
 	@echo "  rector          Apply Rector refactoring"
@@ -80,9 +80,9 @@ test: ensure-up
 
 # Real deadlock / lock wait / serialization tests (tests/Database): starts the "db" profile servers, runs, stops them.
 test-db: ensure-up
-	@$(call dc,--profile db up -d --wait mysql mariadb postgres)
-	@$(call dc,exec -T -e DDRB_MYSQL_URL=mysql://root:root@mysql:3306/ddrb -e DDRB_MARIADB_URL=mysql://root:root@mariadb:3306/ddrb -e DDRB_POSTGRES_URL=pgsql://postgres:root@postgres:5432/ddrb $(SERVICE_PHP) vendor/bin/phpunit --testsuite Database --no-coverage --fail-on-skipped); \
-	status=$$?; $(call dc,--profile db stop mysql mariadb postgres); exit $$status
+	@$(call dc,--profile db up -d --wait mysql mariadb mariadb118 postgres)
+	@$(call dc,exec -T -e DDRB_MYSQL_URL=mysql://root:root@mysql:3306/ddrb -e DDRB_MARIADB_URL=mysql://root:root@mariadb:3306/ddrb -e DDRB_MARIADB118_URL=mysql://root:root@mariadb118:3306/ddrb -e DDRB_POSTGRES_URL=pgsql://postgres:root@postgres:5432/ddrb $(SERVICE_PHP) vendor/bin/phpunit --testsuite Database --no-coverage --fail-on-skipped); \
+	status=$$?; $(call dc,--profile db stop mysql mariadb mariadb118 postgres); exit $$status
 
 test-coverage: ensure-up
 	@$(call dc,exec $(SERVICE_PHP) composer test-coverage) | tee coverage-php.txt

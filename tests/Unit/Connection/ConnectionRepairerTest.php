@@ -25,11 +25,21 @@ final class ConnectionRepairerTest extends TestCase
         self::assertSame(ConnectionRepairer::ACTION_NONE, (new ConnectionRepairer())->afterFailure($connection, 1));
     }
 
-    public function testAfterFailureAtEntryLevelZeroClosesInsteadOfRollingBack(): void
+    public function testAfterFailureAtEntryLevelZeroRollsBackFirst(): void
+    {
+        $connection = $this->createMock(Connection::class);
+        $connection->method('getTransactionNestingLevel')->willReturnOnConsecutiveCalls(1, 1);
+        $connection->expects($this->once())->method('rollBack');
+        $connection->expects($this->never())->method('close');
+
+        self::assertSame(ConnectionRepairer::ACTION_ROLLED_BACK, (new ConnectionRepairer())->afterFailure($connection, 0));
+    }
+
+    public function testAfterFailureAtEntryLevelZeroClosesWhenTheSavepointRollbackFails(): void
     {
         $connection = $this->connectionAt(2);
+        $connection->expects($this->once())->method('rollBack')->willThrowException(new RuntimeException('1305 SAVEPOINT DOCTRINE_2 does not exist'));
         $connection->expects($this->once())->method('close');
-        $connection->expects($this->never())->method('rollBack');
 
         self::assertSame(ConnectionRepairer::ACTION_CLOSED, (new ConnectionRepairer())->afterFailure($connection, 0));
     }

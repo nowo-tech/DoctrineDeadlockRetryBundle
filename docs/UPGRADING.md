@@ -35,21 +35,44 @@ composer require nowo-tech/doctrine-deadlock-retry-bundle:^3.0
 
 What changes, and what to check:
 
-1. **The connection is closed, not rolled back, after a failure.** When an operation started at nesting level 0
-   fails and leaves a transaction active, the service calls `Connection::close()` instead of
-   `EntityManager::rollback()`. The next query reconnects. Session state set by hand on the connection (a `SET` you
-   ran once, temporary tables) is lost; put such settings in a DBAL middleware or the connection's `driverOptions`
-   so a reconnect restores them. Set `rollback_on_deadlock: false` on a profile to skip the repair entirely (not
-   recommended).
-2. **Nothing is retried inside your own transaction.** If you call `flush()` / `retry()` while a transaction is open
-   (nesting level > 0), a transient failure is rethrown after the levels the operation opened are rolled back (or the
-   connection closed). Move the retry around the outermost transaction:
-   `retry(fn () => $em->wrapInTransaction(...))`.
-3. **Delays are jittered and exponential.** `sleep_ms` keeps working as the backoff base. To keep 2.x's fixed sleep,
+1. **Requirements: DBAL 4 and ORM 3 only.** `doctrine/dbal ^4.0` and `doctrine/orm ^3.0` (2.x allowed DBAL 3.8 / ORM
+   2.13, which were never tested in CI). Stay on 2.4.x until you have moved to DBAL 4.
+2. **The connection is repaired after every failure.** The levels the failed operation left open are rolled back
+   (instead of 2.x's single blind `EntityManager::rollback()`); when that rollback fails, which is what happens after
+   a deadlock in a nested transaction, the connection is **closed**. A close reconnects on the next query and
+   **loses session state**: variables you `SET` once, temporary tables, and **session-level locks**: MySQL
+   `GET_LOCK()`, PostgreSQL advisory locks (`pg_advisory_lock`, Symfony Lock's `PostgreSqlStore` / `DoctrineDbalPostgreSqlStore`
+   on the same connection). An ordinary failure (rollback works) keeps all of it. Put connection settings in a DBAL
+   middleware or the driver's init command so a reconnect restores them.
+3. **Nothing is retried inside your own transaction.** If you call `flush()` / `retry()` while a transaction is open
+   (nesting level > 0, > 1 with auto-commit disabled), a transient failure is rethrown after the levels the operation
+   opened are rolled back. Move the retry around the outermost transaction:
+   `retry(fn () => $em->wrapInTransaction(...))`. After a deadlock inside your transaction the connection may have
+   been closed (the server already ended the transaction): your own `rollBack()` / `commit()` then throws
+   `NoActiveTransaction`, which hides the deadlock in a `catch { rollBack(); throw; }`. Guard it with
+   `isTransactionActive()` or use `finally`.
+4. **`rollback_on_deadlock: false` no longer retries on a leftover transaction.** The service leaves the connection
+   as it is, as before, but when the failure left a transaction open it rethrows instead of replaying (2.x replayed
+   inside ghost savepoints, auto-committing each attempt). Enable the `worker_guard` if you use it.
+5. **`retry()` clears the entity manager before each replay.** Entities loaded before the call, or in a failed
+   attempt, are detached. Load what you change inside the callable.
+6. **The exception that escapes.** When retries are exhausted (or not allowed), a transient failure that only
+   Doctrine wrapped is rethrown as the transient exception itself: after a nested deadlock you now get the
+   `DeadlockException`, not the ORM's `DriverException` 1305 "SAVEPOINT DOCTRINE_n does not exist" that carried it.
+   Your own wrapper exceptions are rethrown unchanged.
+7. **Lock wait timeouts are not retried by default** (`retry_lock_wait_timeout: false`); 1205 and PostgreSQL 55P03
+   are retried only when you enable it, ideally with a short lock wait timeout and a `max_total_ms` budget (see
+   [Configuration → Lock wait retries](CONFIGURATION.md#lock-wait-retries)).
+8. **More failures are transient:** MariaDB 1020 (snapshot isolation conflict, MariaDB ≥ 11.6.2) and PostgreSQL
+   55P03 (lock wait). A 1305 lost savepoint is transient **only** through the deadlock it carries; on its own (an
+   implicit commit dropped the savepoints) it is rethrown.
+9. **Delays are jittered and exponential.** `sleep_ms` keeps working as the backoff base. To keep 2.x's fixed sleep,
    set `jitter: none` and `backoff_max_ms` equal to the base.
-4. **Lock wait timeouts (1205) are retried** by default. Each attempt can wait `innodb_lock_wait_timeout` (50 s by
-   default), so for web requests lower that timeout or set `retry_lock_wait_timeout: false`.
-5. A failure whose message only reads `1305 SAVEPOINT DOCTRINE_n does not exist` is now treated as transient.
+
+**Known issue in ≤ 2.4.0** (fixed by 3.0.0, no security advisory): after a deadlock in a nested transaction, 2.x's
+blind rollback failed again with 1305 (a 500 instead of a retry) and left the worker's connection at nesting level 2,
+so later requests on that worker ran inside ghost savepoints (their writes committed immediately). The worker guard
+of 3.0.0 also repairs connections that other code poisoned.
 
 Opt-in, nothing happens until you enable them:
 

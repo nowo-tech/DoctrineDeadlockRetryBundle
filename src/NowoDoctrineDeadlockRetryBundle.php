@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace Nowo\DoctrineDeadlockRetryBundle;
 
+use Nowo\DoctrineDeadlockRetryBundle\DependencyInjection\Compiler\TransactionRunnerAliasPass;
 use Nowo\DoctrineDeadlockRetryBundle\DependencyInjection\NowoDoctrineDeadlockRetryExtension;
+use Symfony\Component\DependencyInjection\Compiler\PassConfig;
+use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Extension\ExtensionInterface;
 use Symfony\Component\HttpKernel\Bundle\Bundle;
 
@@ -16,6 +19,13 @@ use Symfony\Component\HttpKernel\Bundle\Bundle;
  */
 class NowoDoctrineDeadlockRetryBundle extends Bundle
 {
+    public function build(ContainerBuilder $container): void
+    {
+        parent::build($container);
+
+        $container->addCompilerPass(new TransactionRunnerAliasPass(), PassConfig::TYPE_BEFORE_OPTIMIZATION, TransactionRunnerAliasPass::PRIORITY);
+    }
+
     /**
      * @return ExtensionInterface|null The bundle DI extension
      */

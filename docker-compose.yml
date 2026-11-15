@@ -15,6 +15,7 @@ services:
       # Real-database tests (tests/Database) run only when these DSNs are set; `make test-db` starts the servers.
       - DDRB_MYSQL_URL=${DDRB_MYSQL_URL:-}
       - DDRB_MARIADB_URL=${DDRB_MARIADB_URL:-}
+      - DDRB_MARIADB118_URL=${DDRB_MARIADB118_URL:-}
       - DDRB_POSTGRES_URL=${DDRB_POSTGRES_URL:-}
     command: ["tail", "-f", "/dev/null"]
     networks:
@@ -38,6 +39,22 @@ services:
 
   mariadb:
     image: mariadb:11.4
+    profiles: ["db"]
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+      MARIADB_DATABASE: ddrb
+    tmpfs:
+      - /var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 2s
+      retries: 60
+    networks:
+      - doctrine-deadlock-retry-bundle-network
+
+  # MariaDB >= 11.6.2: innodb_snapshot_isolation is on by default (snapshot conflicts raise 1020).
+  mariadb118:
+    image: mariadb:11.8
     profiles: ["db"]
     environment:
       MARIADB_ROOT_PASSWORD: root

@@ -33,7 +33,8 @@ final readonly class RetryProfile
      * @param bool $rollbackOnDeadlock Whether to repair the connection (close it, or roll back inside a caller's transaction) before retrying
      * @param int $backoffMaxMs Upper bound of a single delay in milliseconds
      * @param bool $fullJitter Whether each delay is a random value between 0 and the exponential bound
-     * @param bool $retryLockWaitTimeout Whether lock wait timeouts (1205) are retried, not only deadlocks and serialization failures
+     * @param bool $retryLockWaitTimeout Whether lock wait timeouts (1205, 55P03) are retried, not only deadlocks and serialization failures
+     * @param int|null $maxTotalMs Time budget of the whole call in milliseconds: no retry starts once the elapsed time plus the next delay would exceed it (null = no budget)
      */
     public function __construct(
         public string $name,
@@ -42,7 +43,8 @@ final readonly class RetryProfile
         public bool $rollbackOnDeadlock = true,
         int $backoffMaxMs = self::DEFAULT_BACKOFF_MAX_MS,
         public bool $fullJitter = true,
-        public bool $retryLockWaitTimeout = true,
+        public bool $retryLockWaitTimeout = false,
+        public ?int $maxTotalMs = null,
     ) {
         $this->backoffMaxMs = max($backoffMaxMs, $sleepMs);
     }
@@ -61,6 +63,17 @@ final readonly class RetryProfile
     public function maxAttempts(): int
     {
         return $this->maxRetries + 1;
+    }
+
+    /**
+     * @param float $elapsedMs Time spent in the call so far
+     * @param int $nextDelayMs Delay before the next attempt
+     *
+     * @return bool Whether the time budget allows another attempt
+     */
+    public function withinBudget(float $elapsedMs, int $nextDelayMs): bool
+    {
+        return $this->maxTotalMs === null || $elapsedMs + $nextDelayMs <= $this->maxTotalMs;
     }
 
     /**

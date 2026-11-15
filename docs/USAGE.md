@@ -58,39 +58,57 @@ $this->deadlockRetry->retry(function (): void {
 1. **Detection.** A failure is transient when its `getPrevious()` chain contains:
    - a DBAL `RetryableException` (`DeadlockException`, `LockWaitTimeoutException`, …);
    - a driver exception (`Doctrine\DBAL\Driver\Exception`, `PDOException`) with MySQL / MariaDB code `1213`
-     (deadlock) or `1205` (lock wait timeout), or SQLSTATE `40001` / `40P01`;
-   - MySQL / MariaDB `1305` on a savepoint Doctrine created (`SAVEPOINT DOCTRINE_2 does not exist`): what a deadlock
-     in a nested transaction turns into (see [below](#what-goes-wrong-without-it)).
+     (deadlock), `1205` (lock wait timeout) or `1020` (MariaDB ≥ 11.6 snapshot isolation conflict), or SQLSTATE
+     `40001` / `40P01` / `55P03` (PostgreSQL serialization failure, deadlock, `lock_timeout` / `NOWAIT`).
 
-   Other exceptions are never retried, whatever their code. Lock wait timeouts are retried unless the profile sets
-   `retry_lock_wait_timeout: false`.
-2. **Connection repair** (after any failure, when `rollback_on_deadlock` is on). Called at nesting level 0 and a
-   transaction is still active: the connection is **closed** (`Connection::close()` resets the nesting level and the
-   server discards the transaction); it is never rolled back, because the rollback is what fails after a deadlock.
-   Called inside a transaction of yours (level > 0): the levels the operation left open are rolled back, and the
-   connection is closed if that rollback fails.
+   Other exceptions are never retried, whatever their code. A MySQL / MariaDB `1305` "SAVEPOINT DOCTRINE_n does not
+   exist" is never transient **on its own**: savepoints also vanish on an implicit commit (DDL inside the
+   transaction), and replaying would repeat committed work. After a nested deadlock the ORM's 1305 carries the
+   deadlock in its chain, and that deadlock is what counts (see [below](#what-goes-wrong-without-it)). A connection
+   lost during a commit is not transient either: its outcome is unknown. Lock wait timeouts are retried only with
+   `retry_lock_wait_timeout: true` (default `false`).
+2. **Connection repair** (after any failure, when `rollback_on_deadlock` is on). The levels the operation left open
+   are **rolled back** down to the level the call started at; the connection is **closed** only when that rollback
+   fails (after a nested deadlock the server has dropped the savepoints, so `ROLLBACK TO SAVEPOINT` fails with 1305;
+   `Connection::close()` resets the nesting level). An ordinary failure therefore keeps session state: variables,
+   MySQL `GET_LOCK()` and PostgreSQL advisory locks survive.
 3. **Entity manager.** A closed entity manager is reset with `ManagerRegistry::resetManager()` (`flush()` then
-   rethrows, see above). Without a `ManagerRegistry` a closed manager cannot be reset, so `retry()` rethrows the
-   original failure instead of retrying on a closed manager.
-4. **Nested calls are not retried.** When the call starts inside a transaction (nesting level > 0), the database
-   has rolled back (MySQL / MariaDB) or aborted (PostgreSQL) the whole transaction, so only its owner can replay it:
-   the failure is rethrown after the repair. Put the retry around the outermost transaction.
-5. **Backoff.** Before retry *n* the service waits a random time between 0 and
+   rethrows, see above). Before `retry()` replays, an **open** manager is **cleared**, so entities the failed
+   attempt persisted or changed are not flushed again. Without a `ManagerRegistry` a closed manager cannot be reset,
+   so `retry()` rethrows the original failure instead of retrying on a closed manager.
+4. **When nothing is retried.**
+   - Inside a caller's transaction (nesting level > 0 when the call starts; > 1 with auto-commit disabled): the
+     database rolled back (MySQL / MariaDB) or aborted (PostgreSQL) the whole transaction, so only its owner can
+     replay it. Put the retry around the outermost transaction.
+   - With `rollback_on_deadlock: false`, when the failure left a transaction open: the service did not repair the
+     connection, and a replay would run inside ghost savepoints and auto-commit.
+   - When `max_total_ms` would be exceeded by the next delay, or after `max_retries`.
+5. **Auto-commit disabled.** The connection's implicit transaction (level 1) is the outermost level: it is rolled
+   back before each replay (closed if that rollback fails). Call `retry()` right after a commit.
+6. **Backoff.** Before retry *n* the service waits a random time between 0 and
    `min(backoff_max_ms, backoff_base_ms × 2^(n-1))` (full jitter), so concurrent workers do not retry in lockstep.
    `jitter: none` waits exactly the bound.
-6. **Exhaustion.** After `max_retries` the last failure is rethrown as is. With [HTTP mapping](#http-mapping-503-and-409-instead-of-500)
-   enabled it becomes a 503 with `Retry-After`.
+7. **What escapes.** When the service gives up on a transient failure that only Doctrine wrapped (the ORM's 1305 after
+   a nested deadlock, `OptimisticLockException("Commit failed")`), it rethrows the transient exception itself
+   (`DeadlockException`, `LockWaitTimeoutException`, …), so `catch (RetryableException)` works. An exception of your
+   own that wraps it is rethrown as is. With [HTTP mapping](#http-mapping-503-and-409-instead-of-500) enabled it
+   becomes a 503 with `Retry-After`.
 
 Retries are logged at `info` (kind, profile, attempt, delay) and repairs at `notice` (nesting level, action). Logs
 never contain SQL, parameters or driver messages.
 
 ## Important
 
-A failed attempt clears the persistence context. Repeat the full unit of work (load, modify, flush) in each attempt.
+Each attempt must redo the full unit of work: load, modify, flush. The service clears an open entity manager before
+a replay and resets a closed one, so do not keep entities loaded before `retry()` (or in a previous attempt) and use
+them afterwards as managed objects. Prefer `wrapInTransaction()` inside the callable: the ORM then also closes the
+manager on failure.
 
 Call `retry()` / `flush()` **outside** any transaction you opened yourself and open the transaction inside the
 callable (for example `retry(fn () => $em->wrapInTransaction(...))`). Inside your transaction nothing is retried
-(see step 4 above).
+(see step 4 above), and after a nested deadlock your transaction may already be gone: the service closed the
+connection, so your own `rollBack()` / `commit()` throws `NoActiveTransaction`. Guard it with
+`isTransactionActive()`, or let the failure reach the outermost `retry()`.
 
 ## High-load readiness
 
@@ -117,17 +135,24 @@ nowo_doctrine_deadlock_retry:
         enabled: true
         connections: []             # empty = every Doctrine connection
         reset_closed_managers: true
+        clear_managers: true        # clear open entity managers on kernel.terminate and after each message
+        messenger: true             # also run after each Messenger message (when symfony/messenger is installed)
 ```
 
 On every main request (`kernel.request`, priority 2048, before the router and the firewall) and on
 `kernel.terminate` (priority -2048), every guarded connection left with a transaction is repaired: one level open is
 rolled back, deeper (or a failed rollback) is closed. Connections with auto-commit disabled are expected at level 1.
-Closed entity managers of every manager in the registry are reset. Each repair logs one `warning` with the connection
-or manager name, the nesting level, the action and the phase, never SQL.
+Closed entity managers are reset. On `kernel.terminate`, open entity managers are cleared (`clear_managers`), so
+changes a failed unit of work left pending, and the identity map, never reach the next request. Each repair logs one
+`warning` with the connection or manager name, the nesting level, the action and the phase, never SQL.
 
-The guard fetches every connection and manager from the registry, so enable it where it pays: long-running workers.
-Outside HTTP (a Messenger worker, a custom loop) call `Nowo\DoctrineDeadlockRetryBundle\Worker\ConnectionGuard::repair('messenger')`
-yourself after each message.
+With `messenger: true` the same guard (repair + clear) runs after every `WorkerMessageHandledEvent` and
+`WorkerMessageFailedEvent`, so a message never inherits the previous one's connection state.
+
+The guard only looks at connections and managers the container has already initialised: it never opens a
+connection or initialises a lazy manager a request did not use. That makes it cheap in classic PHP-FPM too, but it is
+built for long-running workers. Outside HTTP and Messenger (a custom loop) call
+`Nowo\DoctrineDeadlockRetryBundle\Worker\ConnectionGuard::repair('loop', true)` yourself after each unit.
 
 ### HTTP mapping: 503 and 409 instead of 500
 
@@ -144,8 +169,12 @@ nowo_doctrine_deadlock_retry:
         format: exception           # or problem_json
 ```
 
-A `kernel.exception` listener (priority 0) maps a transient failure that reaches the kernel, retried or not, to
-**503 Service Unavailable** with `Retry-After`, and a conflict to **409 Conflict**. An exception that already is an
+A `kernel.exception` listener (priority -64: after Symfony's `logKernelException`, so the failure is always logged,
+and before rendering at -128) maps a transient failure that reaches the kernel, retried or not, to
+**503 Service Unavailable** with `Retry-After`, and a conflict to **409 Conflict**. Path prefixes match on segment
+boundaries (`/api` matches `/api` and `/api/orders`, not `/apiary`); with `paths` and `routes` both empty the
+mapping applies to **every** request. A conflict class that wraps a driver error, such as the ORM's
+`OptimisticLockException("Commit failed")` around a failed `COMMIT` whose outcome is unknown, is not mapped. An exception that already is an
 `HttpExceptionInterface` is left alone. `Nowo\TransactionContract\TransientStorageFailure` (the framework-free
 exception of `nowo-tech/transaction-contract`) is mapped to 503 too, with its own `retryAfterSeconds()` hint.
 
@@ -201,9 +230,9 @@ final class OrderController
 
 ### DDD / hexagonal host example
 
-The application layer depends on `nowo-tech/transaction-contract` (framework-free:
-`TransactionRunnerInterface::run(callable): mixed` and `TransientStorageFailure` with `retryAfterSeconds()`). The
-bundle aliases `TransactionRunnerInterface` to its adapter, `Transaction\DeadlockRetryTransactionRunner`:
+The application layer depends on [`nowo-tech/transaction-contract`](https://github.com/nowo-tech/transaction-contract):
+framework-free `TransactionRunnerInterface::run(callable): mixed` and `TransientStorageFailure` with
+`retryAfterSeconds()`. It contains no Doctrine or Symfony type.
 
 ```php
 use Nowo\TransactionContract\TransactionRunnerInterface;
@@ -219,15 +248,24 @@ final readonly class PayOrderHandler
         $this->transactions->run(function () use ($command): void {
             $this->orders->get($command->orderId)->pay($command->amount);   // loaded per attempt
         });
+        // side effects (mail, Messenger dispatch, domain events) only here, after run() returned
     }
 }
 ```
 
-The adapter runs the operation in `wrapInTransaction()` (flush + commit) through `retry()` with the
-`transaction_runner.profile` (default profile when null). When retries are exhausted, or the call runs inside a
-caller's transaction, a transient failure becomes `TransientStorageFailure::fromPrevious($failure,
-retry_after_seconds)`; `http_mapping` answers it with 503 + `Retry-After`. A `TransientStorageFailure` thrown by a
-nested runner is itself transient, so the outermost runner replays the whole unit of work.
+The bundle ships the retrying Doctrine adapter, `Transaction\DeadlockRetryTransactionRunner` (service id
+`nowo_doctrine_deadlock_retry.transaction_runner`). It runs the operation in `wrapInTransaction()` (flush + commit)
+through `retry()` with `transaction_runner.profile` (the default profile when null). When retries are exhausted, or
+the call runs inside a caller's transaction, a transient failure becomes
+`TransientStorageFailure::fromPrevious($failure, retry_after_seconds)`; `http_mapping` answers it with 503 +
+`Retry-After`. A `TransientStorageFailure` thrown by a nested runner is classified by the storage error it carries, so
+the outermost runner replays the whole unit of work (a lock wait only with `retry_lock_wait_timeout`).
+
+`TransactionRunnerInterface` is aliased to the adapter by a compiler pass **only when nothing defines it**: alias it
+yourself to choose another runner. Bundles that follow the [recipe](#migration-guide-for-bundles-with-their-own-reset-helpers)
+alias their one-attempt default only when absent, at the default pass priority, so this adapter (priority 10) wins.
+Inside a caller's transaction `wrapInTransaction()` closes, and the bundle resets, the shared entity manager in the
+middle of the caller's transaction: the caller must not keep using entities it loaded before.
 
 ```yaml
 nowo_doctrine_deadlock_retry:
@@ -236,33 +274,59 @@ nowo_doctrine_deadlock_retry:
         profile: null
 ```
 
-`TransientFailureClassifier` and `ConnectionRepairer` are public services; inject them.
-
 ### Migration guide for bundles with their own reset helpers
 
 Many bundles carry a copy of "if the entity manager is closed, reset it" and some call `rollBack()` again in a
-`catch`. With this bundle:
+`catch`. The adoption recipe:
+
+**R1 — depend on the port, register your default under your own id.** Require `nowo-tech/transaction-contract` for
+the application layer and type-hint `TransactionRunnerInterface`; do not require this bundle. Register your default
+runner (for example `nowo-tech/transaction-doctrine`'s `DoctrineTransactionRunner`) under **your own service id**
+(`acme_foo.transaction_runner`) and bind your services to that id. Alias `TransactionRunnerInterface` to it only when
+the interface is not already defined, in a compiler pass, so a host (or this bundle's adapter) decides globally and
+extension load order never does:
+
+```php
+final class TransactionRunnerAliasPass implements CompilerPassInterface
+{
+    public function process(ContainerBuilder $container): void
+    {
+        if (!$container->has(TransactionRunnerInterface::class)) {
+            $container->setAlias(TransactionRunnerInterface::class, 'acme_foo.transaction_runner');
+        }
+    }
+}
+```
+
+**R2 — what the default runner guarantees after a failure.** The levels it opened are rolled back to the entry
+level, and the connection is closed only if that rollback fails. The entity manager has **no pending changes**
+(cleared, or closed and reset). Transient failures surface as `TransientStorageFailure`.
+
+**R3 — callers' rules.**
+- Never `catch (\Throwable $e) { $connection->rollBack(); throw $e; }`: after a nested deadlock the level is already
+  0 (the connection was closed), so that `rollBack()` throws `NoActiveTransaction` and hides the real failure. Guard
+  with `isTransactionActive()`, use `finally`, or let the runner handle it.
+- Leave no pending changes behind a failure, and keep side effects (mail, Messenger dispatch, events) until `run()`
+  or `retry()` has returned: the operation can run several times.
+- Retry only at the outermost level.
+
+**R4 — Messenger.** `worker_guard.messenger` repairs connections and clears managers after every message. A host
+without this bundle needs DoctrineBundle's `doctrine_ping_connection` / `doctrine_clear_entity_manager` middlewares
+(or its own listener calling the same repair).
+
+**R5 — DDD hosts** point at `nowo-tech/transaction-contract` (see
+[DDD / hexagonal host example](#ddd--hexagonal-host-example)), not at a port of their own.
 
 | Before (in the bundle) | After |
 |------------------------|-------|
-| `if (!$em->isOpen()) { $registry->resetManager(); }` before each write | Keep it only where the bundle must work without this bundle; hosts that enable `worker_guard` get it on every request. |
-| `try { … } catch (\Throwable $e) { $conn->rollBack(); throw $e; }` | Remove the extra `rollBack()`: after a nested deadlock it throws 1305 and hides the deadlock. If you must clean up, use `ConnectionRepairer::afterFailure($connection, $entryLevel)`, or close the connection when a transaction is still active. |
-| `wrapInTransaction()` + flush inside, no retry | Run the whole closure through `DeadlockRetryService::retry()` or a `TransactionRunnerInterface` adapter, outermost only. |
-| Catch `DeadlockException` only | Classify with `TransientFailureClassifier` (also 1205, 40001, 1305 after a deadlock). |
-| Let the 500 through | Throw `TransientStorageFailure` from the application layer, or let the host's `http_mapping` turn it into 503 + `Retry-After`. |
-| Side effects (mail, Messenger dispatch) inside the retried closure | Move them after `retry()` / `run()` returns: the closure can run several times. |
+| `if (!$em->isOpen()) { $registry->resetManager(); }` before each write | Keep it only where the bundle must work without a guard; hosts that enable `worker_guard` get it on every request and message. |
+| `try { … } catch (\Throwable $e) { $conn->rollBack(); throw $e; }` | Remove the extra `rollBack()` (R3). If you must clean up, use `ConnectionRepairer::afterFailure($connection, $entryLevel)`. |
+| `wrapInTransaction()` + flush inside, no retry | Run the whole closure through the runner (or `DeadlockRetryService::retry()`), outermost only. |
+| Catch `DeadlockException` only | Classify with `TransientFailureClassifier` (also 1205, 1020, 40001, 40P01, 55P03). |
+| Let the 500 through | Throw `TransientStorageFailure`, or let the host's `http_mapping` turn it into 503 + `Retry-After`. |
 
-Steps for a bundle:
-
-1. Require `nowo-tech/transaction-contract` (framework-free) for the application layer; type-hint
-   `TransactionRunnerInterface`. Do not require this bundle.
-2. Ship a safe default runner for hosts that wire nothing: one attempt, transaction opened and committed by the
-   runner, connection closed when a transaction is still active after a failure, closed entity manager reset,
-   transient failures rethrown as `TransientStorageFailure`.
-3. Let the host alias `TransactionRunnerInterface` to the retrying adapter.
-4. Delete the copy-pasted reset helper once its callers go through the runner, and document `worker_guard` for
-   worker-mode hosts.
-5. Add a test that a failed unit of work leaves the connection at nesting level 0 and the manager open.
+Add a test that a failed unit of work leaves the connection at its entry nesting level, the manager with no pending
+changes, and session state (a session variable) intact.
 
 ## Using it from a DDD / hexagonal application
 
@@ -282,9 +346,11 @@ services and controllers and use [`flush()`](#flush) and [`retry()`](#retry) as 
 
 ### DDD / hexagonal host
 
-Keep the bundle out of the domain and application layers. Declare your own transaction port in the application
-layer and implement it in infrastructure with `DeadlockRetryInterface`, which carries no Doctrine or Symfony type
-(REQ-ARCH-001 rules 1 and 3):
+Keep the bundle out of the domain and application layers. Use the shared, framework-free port of
+[`nowo-tech/transaction-contract`](https://github.com/nowo-tech/transaction-contract) (`TransactionRunnerInterface`)
+rather than a port of your own, and implement it in infrastructure with `DeadlockRetryInterface`, which carries no
+Doctrine or Symfony type (REQ-ARCH-001 rules 1 and 3). The example below shows the shape with a host-declared port;
+replace `TransactionRunner` by `Nowo\TransactionContract\TransactionRunnerInterface`:
 
 ```php
 // Application layer: your port, framework-free

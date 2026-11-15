@@ -94,7 +94,7 @@ jobs:
 
 
   database:
-    name: Real databases (MySQL 8.4, MariaDB 11.4, PostgreSQL 16)
+    name: Real databases (MySQL 8.4, MariaDB 11.4 and 11.8, PostgreSQL 16)
     runs-on: ubuntu-latest
 
     services:
@@ -112,6 +112,14 @@ jobs:
           MARIADB_ROOT_PASSWORD: root
           MARIADB_DATABASE: ddrb
         ports: ['3307:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized" --health-interval=5s --health-timeout=5s --health-retries=30
+      mariadb118:
+        image: mariadb:11.8
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: ddrb
+        ports: ['3308:3306']
         options: >-
           --health-cmd="healthcheck.sh --connect --innodb_initialized" --health-interval=5s --health-timeout=5s --health-retries=30
       postgres:
@@ -146,6 +154,7 @@ jobs:
         env:
           DDRB_MYSQL_URL: mysql://root:root@127.0.0.1:3306/ddrb
           DDRB_MARIADB_URL: mysql://root:root@127.0.0.1:3307/ddrb
+          DDRB_MARIADB118_URL: mysql://root:root@127.0.0.1:3308/ddrb
           DDRB_POSTGRES_URL: pgsql://postgres:root@127.0.0.1:5432/ddrb
         run: vendor/bin/phpunit --testsuite Database --no-coverage --fail-on-skipped
 

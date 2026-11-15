@@ -7,6 +7,7 @@ namespace Nowo\DoctrineDeadlockRetryBundle\Tests\Unit\Transaction;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Driver\Exception as DriverExceptionInterface;
 use Doctrine\DBAL\Exception\DeadlockException;
+use Doctrine\DBAL\Exception\LockWaitTimeoutException;
 use Doctrine\ORM\EntityManagerInterface;
 use Exception;
 use LogicException;
@@ -88,6 +89,23 @@ final class DeadlockRetryTransactionRunnerTest extends TestCase
         self::assertSame(2, $this->transactions);
     }
 
+    public function testAnInnerFailureOverALockWaitFollowsTheLockWaitSwitch(): void
+    {
+        $inner  = TransientStorageFailure::fromPrevious(new LockWaitTimeoutException($this->driverError(1205, 'HY000'), null), 3);
+        $caught = null;
+
+        try {
+            $this->runner(maxRetries: 3)->run(static function () use ($inner): never {
+                throw $inner;
+            });
+        } catch (TransientStorageFailure $failure) {
+            $caught = $failure;
+        }
+
+        self::assertSame($inner, $caught);
+        self::assertSame(1, $this->transactions, 'retry_lock_wait_timeout is off by default: not retried.');
+    }
+
     public function testOtherFailuresAreRethrownUnchanged(): void
     {
         $bug = new LogicException('bug');
@@ -114,6 +132,21 @@ final class DeadlockRetryTransactionRunnerTest extends TestCase
         $service = new DeadlockRetryService($manager, ['default' => new RetryProfile('default', $maxRetries, 0)], 'default');
 
         return new DeadlockRetryTransactionRunner($service, new TransientFailureClassifier(), $retryAfterSeconds);
+    }
+
+    private function driverError(int $code, string $sqlState): DriverExceptionInterface
+    {
+        return new class('driver error', $code, $sqlState) extends Exception implements DriverExceptionInterface {
+            public function __construct(string $message, int $code, private readonly string $sqlState)
+            {
+                parent::__construct($message, $code);
+            }
+
+            public function getSQLState(): string
+            {
+                return $this->sqlState;
+            }
+        };
     }
 
     private function deadlock(): DeadlockException

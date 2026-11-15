@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nowo\DoctrineDeadlockRetryBundle\Tests\Database;
 
+use Doctrine\DBAL\Exception\DeadlockException;
 use Doctrine\ORM\EntityManagerInterface;
 use Nowo\DoctrineDeadlockRetryBundle\EventListener\TransientFailureExceptionListener;
 use Nowo\DoctrineDeadlockRetryBundle\Tests\Database\Support\Counter;
@@ -82,7 +83,8 @@ final class NestedDeadlockTest extends DatabaseTestCase
             $failure = $throwable;
         }
 
-        self::assertInstanceOf(Throwable::class, $failure);
+        // QA-DDRB-L3: the deadlock itself escapes, not the ORM's 1305 that carries it.
+        self::assertInstanceOf(DeadlockException::class, $failure);
         self::assertSame('OK', $this->otherSession()->await());
         self::assertSame('OK', $this->otherSession()->execute('COMMIT'));
         self::assertSame(0, $this->connection->getTransactionNestingLevel(), 'The connection is repaired even when retries are exhausted.');

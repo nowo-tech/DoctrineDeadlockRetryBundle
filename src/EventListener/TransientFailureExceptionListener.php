@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nowo\DoctrineDeadlockRetryBundle\EventListener;
 
+use Doctrine\DBAL\Driver\Exception as DriverExceptionInterface;
 use Nowo\DoctrineDeadlockRetryBundle\Failure\TransientFailureClassifier;
 use Nowo\TransactionContract\TransientStorageFailure;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
@@ -18,6 +19,7 @@ use Throwable;
 
 use function is_int;
 use function is_string;
+use function rtrim;
 use function str_starts_with;
 
 /**
@@ -25,7 +27,7 @@ use function str_starts_with;
  * Unavailable with Retry-After, and conflict failures to 409 Conflict, instead of a 500 (opt-in: http_mapping).
  *
  * Transient: whatever TransientFailureClassifier recognises (deadlock, lock wait timeout, serialization failure, the
- * 1305 lost savepoint after a nested deadlock, any DBAL RetryableException) and the framework-free
+ * ORM's 1305 that carries a nested deadlock, any DBAL RetryableException) and the framework-free
  * Nowo\TransactionContract\TransientStorageFailure, whose retryAfterSeconds() hint wins over the configured value.
  *
  * Format "exception" (default) replaces the throwable with a Symfony HttpException carrying the status and headers,
@@ -43,8 +45,11 @@ final class TransientFailureExceptionListener implements EventSubscriberInterfac
     public const FORMAT_EXCEPTION    = 'exception';
     public const FORMAT_PROBLEM_JSON = 'problem_json';
 
-    /** Before Symfony's ErrorListener (-128) and API Platform's error handling, after the security listener (1). */
-    public const PRIORITY = 0;
+    /**
+     * After Symfony's ErrorListener::logKernelException (0), so the failure is always logged even when this listener
+     * sets the response, and before its rendering (-128).
+     */
+    public const PRIORITY = -64;
 
     public const UNAVAILABLE_DETAIL = 'The request could not be completed because of a temporary storage conflict. Retry later.';
     public const CONFLICT_DETAIL    = 'The request conflicts with a concurrent change. Reload the resource and retry.';
@@ -123,7 +128,10 @@ final class TransientFailureExceptionListener implements EventSubscriberInterfac
         $path = $request->getPathInfo();
 
         foreach ($this->pathPrefixes as $prefix) {
-            if (str_starts_with($path, $prefix)) {
+            $prefix = rtrim($prefix, '/');
+
+            // Segment boundary: "/api" matches "/api" and "/api/orders", not "/apiary".
+            if ($prefix === '' || $path === $prefix || str_starts_with($path, $prefix . '/')) {
                 return true;
             }
         }
@@ -157,13 +165,29 @@ final class TransientFailureExceptionListener implements EventSubscriberInterfac
         return $this->classifier->isTransient($throwable) ? $this->retryAfterSeconds : null;
     }
 
+    /**
+     * A configured class matches anywhere in the chain. A matching exception that is not itself a driver exception but
+     * wraps one (the ORM's OptimisticLockException("Commit failed") around a failed COMMIT, whose outcome is unknown)
+     * is not a conflict.
+     */
     private function isConflict(Throwable $throwable): bool
     {
         for ($current = $throwable; $current instanceof Throwable; $current = $current->getPrevious()) {
             foreach ($this->conflictExceptions as $class) {
                 if ($current instanceof $class) {
-                    return true;
+                    return $current instanceof DriverExceptionInterface || !$this->wrapsDriverException($current);
                 }
+            }
+        }
+
+        return false;
+    }
+
+    private function wrapsDriverException(Throwable $throwable): bool
+    {
+        for ($current = $throwable->getPrevious(); $current instanceof Throwable; $current = $current->getPrevious()) {
+            if ($current instanceof DriverExceptionInterface) {
+                return true;
             }
         }
 

@@ -19,13 +19,15 @@ use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use function dirname;
 use function getenv;
 use function is_string;
+use function str_starts_with;
 use function usleep;
 
 use const PHP_VERSION_ID;
 
 /**
  * Base class of the real-database tests. They run only when the DSN of a server is set:
- * DDRB_MYSQL_URL, DDRB_MARIADB_URL (mysql://…) and DDRB_POSTGRES_URL (pgsql://…). `make test-db` starts the servers.
+ * DDRB_MYSQL_URL, DDRB_MARIADB_URL, DDRB_MARIADB118_URL (mysql://…) and DDRB_POSTGRES_URL (pgsql://…).
+ * `make test-db` starts the servers.
  *
  * @author Héctor Franco Aceituno <hectorfranco@nowo.tech>
  * @copyright 2026 Nowo.tech
@@ -47,6 +49,33 @@ abstract class DatabaseTestCase extends TestCase
     {
         yield 'MySQL 8.4' => ['DDRB_MYSQL_URL'];
         yield 'MariaDB 11.4' => ['DDRB_MARIADB_URL'];
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function allServers(): iterable
+    {
+        yield from self::mysqlFamily();
+        yield 'PostgreSQL 16' => ['DDRB_POSTGRES_URL'];
+    }
+
+    protected function isPostgreSql(): bool
+    {
+        return str_starts_with($this->url, 'pgsql');
+    }
+
+    /**
+     * Runs one query on a fresh connection (another session) and returns the first column of the first row.
+     */
+    protected function freshValue(string $sql): mixed
+    {
+        $parser = new DsnParser(['mysql' => 'pdo_mysql', 'pgsql' => 'pdo_pgsql']);
+        $fresh  = DriverManager::getConnection($parser->parse($this->url));
+        $value  = $fresh->fetchOne($sql);
+        $fresh->close();
+
+        return $value;
     }
 
     protected function boot(string $environmentVariable): void

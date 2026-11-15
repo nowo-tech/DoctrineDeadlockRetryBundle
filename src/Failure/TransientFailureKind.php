@@ -15,18 +15,12 @@ enum TransientFailureKind: string
     /** MySQL / MariaDB 1213, PostgreSQL 40P01. */
     case Deadlock = 'deadlock';
 
-    /** MySQL / MariaDB 1205. */
+    /** MySQL / MariaDB 1205, PostgreSQL 55P03 (lock_timeout, NOWAIT). */
     case LockWaitTimeout = 'lock_wait_timeout';
 
-    /** SQLSTATE 40001 without a more precise code (PostgreSQL serialization failure). */
+    /** SQLSTATE 40001 without a more precise code (PostgreSQL), MariaDB 1020 (snapshot isolation conflict). */
     case SerializationFailure = 'serialization_failure';
 
-    /**
-     * MySQL / MariaDB 1305 on a savepoint Doctrine created: the server already rolled the whole transaction back
-     * (a deadlock in a nested transaction), and the ORM's failed ROLLBACK TO SAVEPOINT replaced the deadlock error.
-     */
-    case LostSavepoint = 'lost_savepoint';
-
-    /** Any other Doctrine DBAL RetryableException, or nowo-tech/transaction-contract's TransientStorageFailure. */
+    /** Any other Doctrine DBAL RetryableException, or a TransientStorageFailure that carries no storage error. */
     case Retryable = 'retryable';
 }

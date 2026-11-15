@@ -9,7 +9,9 @@ use Doctrine\ORM\OptimisticLockException;
 use InvalidArgumentException;
 use Nowo\DoctrineDeadlockRetryBundle\Config\RetryProfile;
 use Nowo\DoctrineDeadlockRetryBundle\Contract\DeadlockRetryInterface;
+use Nowo\DoctrineDeadlockRetryBundle\DependencyInjection\Compiler\NowoDoctrineDeadlockRetryServiceIds;
 use Nowo\DoctrineDeadlockRetryBundle\DependencyInjection\NowoDoctrineDeadlockRetryExtension;
+use Nowo\DoctrineDeadlockRetryBundle\EventListener\MessengerWorkerGuardSubscriber;
 use Nowo\DoctrineDeadlockRetryBundle\EventListener\TransientFailureExceptionListener;
 use Nowo\DoctrineDeadlockRetryBundle\EventListener\WorkerGuardSubscriber;
 use Nowo\DoctrineDeadlockRetryBundle\Service\DeadlockRetryService;
@@ -113,7 +115,7 @@ final class NowoDoctrineDeadlockRetryExtensionTest extends TestCase
         $this->extension->load([
             [
                 'profiles' => [
-                    'default' => ['backoff_base_ms' => 20, 'backoff_max_ms' => 10, 'jitter' => 'none', 'retry_lock_wait_timeout' => false, 'rollback_on_deadlock' => false],
+                    'default' => ['backoff_base_ms' => 20, 'backoff_max_ms' => 10, 'jitter' => 'none', 'retry_lock_wait_timeout' => true, 'rollback_on_deadlock' => false, 'max_total_ms' => 1500],
                     'legacy'  => ['sleep_ms' => 70],
                     'plain'   => [],
                 ],
@@ -121,11 +123,11 @@ final class NowoDoctrineDeadlockRetryExtensionTest extends TestCase
         ], $this->container);
 
         $this->assertSame(
-            ['default', 3, 20, false, 20, false, false],
+            ['default', 3, 20, false, 20, false, true, 1500],
             $this->container->getDefinition('nowo_doctrine_deadlock_retry.profile.default')->getArguments(),
             'The cap is raised to the base.',
         );
-        $this->assertSame(['legacy', 3, 70, true, 2000, true, true], $this->container->getDefinition('nowo_doctrine_deadlock_retry.profile.legacy')->getArguments());
+        $this->assertSame(['legacy', 3, 70, true, 2000, true, false, null], $this->container->getDefinition('nowo_doctrine_deadlock_retry.profile.legacy')->getArguments());
         $this->assertSame(100, $this->container->getDefinition('nowo_doctrine_deadlock_retry.profile.plain')->getArgument(2));
     }
 
@@ -141,10 +143,12 @@ final class NowoDoctrineDeadlockRetryExtensionTest extends TestCase
     {
         $this->extension->load([['retry_after_seconds' => 3, 'transaction_runner' => ['profile' => 'default']]], $this->container);
 
-        $runner = $this->container->getDefinition(DeadlockRetryTransactionRunner::class);
+        $runner = $this->container->getDefinition(NowoDoctrineDeadlockRetryServiceIds::TRANSACTION_RUNNER);
+        $this->assertSame(DeadlockRetryTransactionRunner::class, $runner->getClass());
         $this->assertSame(3, $runner->getArgument('$retryAfterSeconds'));
         $this->assertSame('default', $runner->getArgument('$profile'));
-        $this->assertSame(DeadlockRetryTransactionRunner::class, (string) $this->container->getAlias(TransactionRunnerInterface::class));
+        $this->assertSame(NowoDoctrineDeadlockRetryServiceIds::TRANSACTION_RUNNER, (string) $this->container->getAlias(DeadlockRetryTransactionRunner::class));
+        $this->assertFalse($this->container->has(TransactionRunnerInterface::class), 'The interface is aliased by the compiler pass, only when absent.');
     }
 
     public function testWorkerGuardAndHttpMappingAreOffByDefault(): void
@@ -164,8 +168,20 @@ final class NowoDoctrineDeadlockRetryExtensionTest extends TestCase
         $this->assertSame('doctrine', (string) $guard->getArgument('$registry'));
         $this->assertSame(['default'], $guard->getArgument('$connections'));
         $this->assertFalse($guard->getArgument('$resetClosedManagers'));
+        $this->assertTrue($guard->getArgument('$clearManagers'));
+        $this->assertSame('service_container', (string) $guard->getArgument('$container'));
         $this->assertFalse($guard->isPublic());
         $this->assertTrue($this->container->getDefinition(WorkerGuardSubscriber::class)->hasTag('kernel.event_subscriber'));
+        $this->assertTrue($this->container->getDefinition(MessengerWorkerGuardSubscriber::class)->hasTag('kernel.event_subscriber'));
+    }
+
+    public function testMessengerGuardCanBeTurnedOff(): void
+    {
+        $this->extension->load([['worker_guard' => ['messenger' => false, 'clear_managers' => false]]], $this->container);
+
+        $this->assertTrue($this->container->hasDefinition(WorkerGuardSubscriber::class));
+        $this->assertFalse($this->container->hasDefinition(MessengerWorkerGuardSubscriber::class));
+        $this->assertFalse($this->container->getDefinition(ConnectionGuard::class)->getArgument('$clearManagers'));
     }
 
     public function testHttpMappingIsRegisteredWhenEnabled(): void
