@@ -24,8 +24,8 @@ final class MessengerWorkerGuardSubscriberTest extends TestCase
     {
         self::assertSame(
             [
-                WorkerMessageHandledEvent::class => ['afterMessage', -2048],
-                WorkerMessageFailedEvent::class  => ['afterMessage', -2048],
+                WorkerMessageHandledEvent::class => [['afterMessage', -2048]],
+                WorkerMessageFailedEvent::class  => [['repairBeforeRetry', 512], ['afterMessage', -2048]],
             ],
             MessengerWorkerGuardSubscriber::getSubscribedEvents(),
         );
@@ -54,5 +54,25 @@ final class MessengerWorkerGuardSubscriberTest extends TestCase
         $registry->method('getManager')->willReturn($manager);
 
         (new MessengerWorkerGuardSubscriber(new ConnectionGuard($registry, clearManagers: true)))->afterMessage();
+    }
+
+    public function testRepairBeforeRetryDoesNotClear(): void
+    {
+        $connection = $this->createMock(Connection::class);
+        $connection->method('isAutoCommit')->willReturn(true);
+        $connection->method('getTransactionNestingLevel')->willReturn(1);
+        $connection->expects($this->once())->method('rollBack');
+
+        $manager = $this->createMock(EntityManagerInterface::class);
+        $manager->method('isOpen')->willReturn(true);
+        $manager->expects($this->never())->method('clear');
+
+        $registry = $this->createMock(ManagerRegistry::class);
+        $registry->method('getConnectionNames')->willReturn(['default' => 'c']);
+        $registry->method('getConnection')->willReturn($connection);
+        $registry->method('getManagerNames')->willReturn(['default' => 'm']);
+        $registry->method('getManager')->willReturn($manager);
+
+        (new MessengerWorkerGuardSubscriber(new ConnectionGuard($registry, clearManagers: true)))->repairBeforeRetry();
     }
 }
