@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## Table of contents
 
 - [[Unreleased]](#unreleased)
+- [[3.0.0] - 2026-11-15](#300---2026-11-15)
 - [[2.4.0] - 2026-11-13](#240---2026-11-13)
 - [[2.3.0] - 2026-11-13](#230---2026-11-13)
 - [[2.2.2] - 2026-10-28](#222---2026-10-28)
@@ -31,9 +32,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-11-15
+
 Target 3.0.0: the connection is repaired (rolled back, closed only when that fails) after any failure, nested calls
 and leftover transactions are no longer retried, `retry()` clears the entity manager before a replay, backoff is
-jittered, DBAL 4 / ORM 3 are required. See [UPGRADING](UPGRADING.md#unreleased).
+jittered, DBAL 4 / ORM 3 are required. See [UPGRADING](UPGRADING.md#to-300).
 
 ### Fixed
 
@@ -115,6 +118,8 @@ jittered, DBAL 4 / ORM 3 are required. See [UPGRADING](UPGRADING.md#unreleased).
 - DDD host case: plain-PHP aggregate, host `TransactionRunner` port and an adapter on the container's
   `DeadlockRetryInterface` alias; a deadlock closes the manager, the unit of work is replayed on the reset manager and
   the domain event is published once, after commit.
+
+[3.0.0]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v3.0.0
 
 ## [2.4.0] - 2026-11-13
 

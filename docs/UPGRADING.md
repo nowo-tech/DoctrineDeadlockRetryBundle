@@ -3,6 +3,7 @@
 ## Table of contents
 
 - [Unreleased](#unreleased)
+- [To 3.0.0](#to-300)
 - [To 2.4.0](#to-240)
 - [To 2.3.0](#to-230)
 - [To 2.2.2](#to-222)
@@ -26,6 +27,14 @@
 - [To 1.0.0](#to-100)
 
 ## Unreleased
+
+## To 3.0.0
+
+From **2.4.0**:
+
+```bash
+composer update nowo-tech/doctrine-deadlock-retry-bundle
+```
 
 Target **3.0.0** (from 2.4.x). Major: the behaviour after a failure changes. No configuration change is required.
 
