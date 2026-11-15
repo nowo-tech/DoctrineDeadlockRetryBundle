@@ -21,14 +21,15 @@ Root key: `nowo_doctrine_deadlock_retry`.
 | `backoff_max_ms` | `2000` | Upper bound of one delay (raised to the base if lower) |
 | `jitter` | `full` | `full`: random delay between 0 and the bound; `none`: exactly the bound |
 | `retry_lock_wait_timeout` | `false` | Also retry lock wait timeouts (MySQL / MariaDB 1205, PostgreSQL 55P03). Each attempt can wait the full `innodb_lock_wait_timeout` (50 s by default) / `lock_timeout`: lower it first (see below) |
-| `max_total_ms` | `null` | Time budget of one `flush()` / `retry()` call: no retry starts once the elapsed time plus the next delay would exceed it. `null` = no budget |
+| `max_total_ms` | `null` | Time budget of one `flush()` / `retry()` call: no retry starts once the elapsed time plus the next delay would exceed it. It gates the start of an attempt, so the worst case is the budget **plus one attempt** (with lock-wait retries, plus one lock wait timeout). `null` = no budget |
 | `rollback_on_deadlock` | `true` | Repair the connection after a failure: roll back the levels the operation left open, close only if that rollback fails. `false`: leave the connection as it is, and never retry while the failure left a transaction open |
 
 #### Lock wait retries
 
 Enable `retry_lock_wait_timeout` only together with a short lock wait timeout, otherwise one long-held row lock can
 keep a worker busy for `(max_retries + 1) × 50 s`. Set it per connection with a DBAL middleware (or the driver's init
-command), 2–5 s for web traffic, and give web profiles a `max_total_ms`:
+command), 2–5 s for web traffic, and give web profiles a `max_total_ms` (size it knowing a call can take the budget
+plus one lock wait):
 
 ```yaml
 # config/packages/doctrine.yaml (MySQL / MariaDB)
@@ -48,7 +49,7 @@ Messenger profiles, where waiting is cheap, can keep longer timeouts.
 | `connections` | `[]` | Connection names to guard; empty = every Doctrine connection |
 | `reset_closed_managers` | `true` | Also reset closed entity managers (only managers already initialised) |
 | `clear_managers` | `true` | Clear open entity managers on `kernel.terminate` and after each Messenger message (no pending changes or identity map reach the next one) |
-| `messenger` | `true` | Also run the guard after each `WorkerMessageHandledEvent` / `WorkerMessageFailedEvent` (when `symfony/messenger` is installed) |
+| `messenger` | `true` | Also run the guard after each `WorkerMessageHandledEvent` / `WorkerMessageFailedEvent` (when `symfony/messenger` is installed): on a failure, repair at priority 512 (before the retry envelope is sent), clear at -2048 |
 
 ### HTTP mapping options (`http_mapping`)
 

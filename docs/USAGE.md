@@ -82,7 +82,9 @@ $this->deadlockRetry->retry(function (): void {
      replay it. Put the retry around the outermost transaction.
    - With `rollback_on_deadlock: false`, when the failure left a transaction open: the service did not repair the
      connection, and a replay would run inside ghost savepoints and auto-commit.
-   - When `max_total_ms` would be exceeded by the next delay, or after `max_retries`.
+   - When `max_total_ms` would be exceeded by the next delay, or after `max_retries`. The budget gates the **start**
+     of each attempt: an attempt that starts inside it runs to its end, so a call can take up to `max_total_ms` plus
+     one attempt (for a lock wait, plus one `innodb_lock_wait_timeout`).
 5. **Auto-commit disabled.** The connection's implicit transaction (level 1) is the outermost level: it is rolled
    back before each replay (closed if that rollback fails). Call `retry()` right after a commit.
 6. **Backoff.** Before retry *n* the service waits a random time between 0 and
@@ -143,11 +145,15 @@ On every main request (`kernel.request`, priority 2048, before the router and th
 `kernel.terminate` (priority -2048), every guarded connection left with a transaction is repaired: one level open is
 rolled back, deeper (or a failed rollback) is closed. Connections with auto-commit disabled are expected at level 1.
 Closed entity managers are reset. On `kernel.terminate`, open entity managers are cleared (`clear_managers`), so
-changes a failed unit of work left pending, and the identity map, never reach the next request. Each repair logs one
+changes a failed unit of work left pending, and the identity map, never reach the next request. Entities a service
+memoised across requests therefore become **detached** after each request or message (as with kernel reset on):
+re-load them per request; `kernel.terminate` listeners below -2048 must not rely on managed entities. Each repair logs one
 `warning` with the connection or manager name, the nesting level, the action and the phase, never SQL.
 
-With `messenger: true` the same guard (repair + clear) runs after every `WorkerMessageHandledEvent` and
-`WorkerMessageFailedEvent`, so a message never inherits the previous one's connection state.
+With `messenger: true` the same guard runs after every `WorkerMessageHandledEvent` and `WorkerMessageFailedEvent`, so a
+message never inherits the previous one's connection state. On a failed message the connections are repaired at
+priority 512, before Messenger's `SendFailedMessageForRetryListener` (100) writes the retry envelope (a transaction
+the failed handler left open would otherwise swallow it); entity managers are cleared at -2048 on both events.
 
 The guard only looks at connections and managers the container has already initialised: it never opens a
 connection or initialises a lazy manager a request did not use. That makes it cheap in classic PHP-FPM too, but it is
@@ -264,12 +270,14 @@ its `Retry-After` hint.
 Many bundles carry a copy of "if the entity manager is closed, reset it" and some call `rollBack()` again in a
 `catch`. The adoption recipe:
 
-**R1 — depend on the port, register your default under your own id.** Require `nowo-tech/transaction-contract` for
-the application layer and type-hint `TransactionRunnerInterface`; do not require this bundle. Register your default
-runner (for example `nowo-tech/transaction-doctrine`'s `DoctrineTransactionRunner`) under **your own service id**
-(`acme_foo.transaction_runner`) and bind your services to that id. Alias `TransactionRunnerInterface` to it only when
-the interface is not already defined, in a compiler pass, so a host (or this bundle's adapter) decides globally and
-extension load order never does:
+**R1 — depend on the port; your services bind to the interface.** Require `nowo-tech/transaction-contract` for the
+application layer; do not require this bundle. Your services type-hint and are wired to
+**`TransactionRunnerInterface`** (the interface id), never to your default's id: otherwise they bypass the host's
+retrying adapter. Register your default runner (for example `nowo-tech/transaction-doctrine`'s
+`DoctrineTransactionRunner`) under **your own service id** (`acme_foo.transaction_runner`), and alias
+`TransactionRunnerInterface` to it **only when the interface is not already defined**, in a compiler pass at the
+default priority (never in your extension's `load()`). A host's alias, or this bundle's adapter (pass priority 10),
+then wins; without them your default is used:
 
 ```php
 final class TransactionRunnerAliasPass implements CompilerPassInterface
