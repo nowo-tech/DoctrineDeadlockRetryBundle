@@ -61,8 +61,10 @@ What changes, and what to check:
    `DeadlockException`, not the ORM's `DriverException` 1305 "SAVEPOINT DOCTRINE_n does not exist" that carried it.
    Your own wrapper exceptions are rethrown unchanged.
 7. **Lock wait timeouts are not retried by default** (`retry_lock_wait_timeout: false`); 1205 and PostgreSQL 55P03
-   are retried only when you enable it, ideally with a short lock wait timeout and a `max_total_ms` budget (see
-   [Configuration → Lock wait retries](CONFIGURATION.md#lock-wait-retries)).
+   are retried only when you enable it, ideally with a short lock wait timeout and a `max_total_ms` budget (a call
+   can take the budget plus one attempt; see [Configuration → Lock wait retries](CONFIGURATION.md#lock-wait-retries)).
+   With the worker guard on, entities a service memoised across requests become detached after each request or
+   message: re-load them per request.
 8. **More failures are transient:** MariaDB 1020 (snapshot isolation conflict, MariaDB ≥ 11.6.2) and PostgreSQL
    55P03 (lock wait). A 1305 lost savepoint is transient **only** through the deadlock it carries; on its own (an
    implicit commit dropped the savepoints) it is rethrown.

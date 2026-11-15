@@ -63,8 +63,10 @@ jittered, DBAL 4 / ORM 3 are required. See [UPGRADING](UPGRADING.md#unreleased).
 - **Worker guard** (opt-in, `worker_guard.enabled`): on `kernel.request` (main request, priority 2048) and
   `kernel.terminate` (priority -2048) a connection left in a transaction is rolled back (one level) or closed
   (deeper, or a failed rollback); closed entity managers are reset; open ones are cleared on terminate
-  (`clear_managers`). With `messenger` (default on) the same runs after every Messenger message. Only connections
-  and managers the container already initialised are touched. One `warning` per repair, without SQL.
+  (`clear_managers`). With `messenger` (default on) the same runs after every Messenger message: on a failed message
+  the connections are repaired at priority 512, before `SendFailedMessageForRetryListener` writes the retry envelope,
+  and managers are cleared at -2048. Only connections and managers the container already initialised are touched.
+  One `warning` per repair, without SQL.
 - **HTTP mapping** (opt-in, `http_mapping.enabled`): a `kernel.exception` listener (priority -64) maps transient
   failures (and `Nowo\TransactionContract\TransientStorageFailure`) to 503 with `Retry-After`
   (`retry_after_seconds`, or the exception's hint), and `conflict_exceptions` (default `OptimisticLockException`,
@@ -107,7 +109,8 @@ jittered, DBAL 4 / ORM 3 are required. See [UPGRADING](UPGRADING.md#unreleased).
   in a nested flush on MySQL 8.4 and MariaDB 11.4 (clean retry, nesting level 0, next request commits), a real lock
   wait timeout (retried; exhausted → 503 + `Retry-After`), the worker guard repairing a poisoned connection and
   clearing pending changes, a PostgreSQL 16 serialization failure (40001) and lock timeout (55P03), a MariaDB 11.8
-  snapshot conflict (1020), and the QA audit regressions (implicit commit not retried, dirty manager cleared, no
+  snapshot conflict (1020), the Messenger repair before the retry envelope, the `max_total_ms` bound (budget plus
+  one attempt), and the QA audit regressions (implicit commit not retried, dirty manager cleared, no
   replay on a leftover transaction, auto-commit off retried, session locks kept after a domain failure).
 - DDD host case: plain-PHP aggregate, host `TransactionRunner` port and an adapter on the container's
   `DeadlockRetryInterface` alias; a deadlock closes the manager, the unit of work is replayed on the reset manager and
