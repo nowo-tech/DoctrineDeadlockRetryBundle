@@ -4,33 +4,63 @@ declare(strict_types=1);
 
 namespace Nowo\DoctrineDeadlockRetryBundle\Service;
 
+use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Driver\Exception as DriverExceptionInterface;
-use Doctrine\DBAL\Exception\DeadlockException;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
 use Nowo\DoctrineDeadlockRetryBundle\Config\RetryProfile;
+use Nowo\DoctrineDeadlockRetryBundle\Connection\ConnectionRepairer;
 use Nowo\DoctrineDeadlockRetryBundle\Contract\DeadlockRetryInterface;
 use Nowo\DoctrineDeadlockRetryBundle\Exception\UnknownRetryProfileException;
+use Nowo\DoctrineDeadlockRetryBundle\Failure\TransientFailureClassifier;
+use Nowo\DoctrineDeadlockRetryBundle\Failure\TransientFailureKind;
 use PDOException;
-use RuntimeException;
+use Psr\Log\LoggerInterface;
+use Random\Randomizer;
 use Throwable;
 
+use function hrtime;
+use function max;
+use function str_starts_with;
+use function usleep;
+
 /**
- * Executes Doctrine flush (and arbitrary callables) with retries on deadlock.
+ * Executes Doctrine flush (and arbitrary callables) with retries on transient failures: deadlocks (1213, 40P01),
+ * serialization failures (40001, MariaDB 1020) and, per profile, lock wait timeouts (1205, 55P03). The ORM's 1305
+ * "SAVEPOINT DOCTRINE_n does not exist" after a nested deadlock is transient through the deadlock it carries; when
+ * the service gives up, that deadlock is what it rethrows.
  *
- * When a failure leaves the entity manager closed (Doctrine ORM closes it on every failed flush), the manager is
- * reset through the ManagerRegistry so the next attempt, and the next request served by a long-running worker,
- * get an open manager.
+ * After any failure the connection is repaired before anything else runs on it: the levels the operation left open
+ * are rolled back, and the connection is closed only when that rollback fails (after a nested deadlock the
+ * savepoints are gone; Connection::close() resets the nesting level). Before a replay an open entity manager is
+ * cleared, so the failed attempt's changes are not flushed again.
+ * A closed entity manager is reset through the ManagerRegistry so the next attempt, and the next request served by
+ * a long-running worker, get an open manager.
+ *
+ * Inside a caller's transaction (nesting level > 0 when the call starts, > 1 with auto-commit disabled) nothing is
+ * retried: the database rolled back, or aborted, the whole transaction, so only its owner can replay it. With
+ * rollback_on_deadlock disabled nothing is retried on a connection the failure left in a transaction. Retries stop
+ * at max_retries or when the profile's max_total_ms budget would be exceeded.
+ *
+ * Retries wait with exponential backoff and full jitter (see RetryProfile). The service holds no per-request state.
  *
  * @author Héctor Franco Aceituno <hectorfranco@nowo.tech>
  * @copyright 2026 Nowo.tech
  */
 final class DeadlockRetryService implements DeadlockRetryInterface
 {
+    private readonly TransientFailureClassifier $classifier;
+
+    private readonly ConnectionRepairer $repairer;
+
+    private readonly Randomizer $randomizer;
+
     /**
      * @param array<string, RetryProfile> $profiles
      * @param ManagerRegistry|null $managerRegistry Used to reset a closed entity manager; without it a closed manager cannot be recovered
      * @param string|null $entityManagerName Entity manager name in the registry (null = default manager)
+     * @param LoggerInterface|null $logger Receives retries and connection repairs (kind, codes and levels only, never SQL)
+     * @param Randomizer|null $randomizer Source of the backoff jitter (a secure engine by default)
      */
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
@@ -38,11 +68,18 @@ final class DeadlockRetryService implements DeadlockRetryInterface
         private readonly string $defaultProfile,
         private readonly ?ManagerRegistry $managerRegistry = null,
         private readonly ?string $entityManagerName = null,
+        private readonly ?LoggerInterface $logger = null,
+        ?TransientFailureClassifier $classifier = null,
+        ?ConnectionRepairer $repairer = null,
+        ?Randomizer $randomizer = null,
     ) {
+        $this->classifier = $classifier ?? new TransientFailureClassifier();
+        $this->repairer   = $repairer ?? new ConnectionRepairer();
+        $this->randomizer = $randomizer ?? new Randomizer();
     }
 
     /**
-     * Flushes the entity manager, retrying on deadlock using the given or default profile.
+     * Flushes the entity manager, retrying on transient failures using the given or default profile.
      *
      * The flush is only retried while the entity manager stays open. If the deadlock closed it (the ORM default),
      * the pending changes are lost with the unit of work: the manager is reset and the deadlock is rethrown.
@@ -58,7 +95,7 @@ final class DeadlockRetryService implements DeadlockRetryInterface
     }
 
     /**
-     * Runs a callable with deadlock retries.
+     * Runs a callable with retries on transient failures.
      *
      * The callable should obtain the entity manager on each attempt (e.g. via getEntityManager()) and redo its
      * whole unit of work, because a closed manager is reset between attempts. Without a ManagerRegistry a closed
@@ -112,38 +149,139 @@ final class DeadlockRetryService implements DeadlockRetryInterface
     private function execute(callable $operation, ?string $profile, bool $replayableAfterClose): mixed
     {
         $retryProfile = $this->resolveProfile($profile);
-        $attempt      = 0;
-        $lastError    = null;
+        $connection   = $this->currentManager()->getConnection();
+        $entryLevel   = $connection->getTransactionNestingLevel();
+        // With auto-commit disabled DBAL keeps an implicit transaction open at level 1: that is the outermost level.
+        $floor     = max($entryLevel, $connection->isAutoCommit() ? 0 : 1);
+        $outermost = $floor === ($connection->isAutoCommit() ? 0 : 1);
+        $startedAt = hrtime(true);
+        $attempt   = 0;
 
-        while ($attempt < $retryProfile->maxAttempts()) {
+        while (true) {
             ++$attempt;
 
             try {
                 return $operation();
             } catch (Throwable $throwable) {
-                if (!$this->isDeadlock($throwable)) {
-                    $this->recoverClosedManager();
+                $kind = $this->classifier->classify($throwable);
 
-                    throw $throwable;
+                if ($retryProfile->rollbackOnDeadlock) {
+                    $this->repairConnection($connection, $entryLevel);
                 }
 
-                $this->prepareForRetry($retryProfile);
                 $managerWasClosed = $this->recoverClosedManager();
 
-                // A closed manager can only be replaced through the registry: without one, every further attempt
-                // would fail with "EntityManager is closed" and hide the original deadlock.
-                $cannotReplay = $managerWasClosed && (!$replayableAfterClose || !$this->managerRegistry instanceof ManagerRegistry);
-
-                if ($attempt >= $retryProfile->maxAttempts() || $cannotReplay) {
+                if (!$kind instanceof TransientFailureKind) {
                     throw $throwable;
                 }
 
-                $lastError = $throwable;
-                $this->sleep($retryProfile);
+                $delay = $retryProfile->delayMilliseconds($attempt, $this->randomizer);
+
+                if (!$outermost
+                    || !$this->mayRetry($retryProfile, $kind, $attempt)
+                    // Never replay on a connection the failure left in a transaction (rollback_on_deadlock: false):
+                    // the replay would run inside ghost savepoints and auto-commit.
+                    || $connection->getTransactionNestingLevel() > $floor
+                    // A closed manager can only be replaced through the registry: without one, every further attempt
+                    // would fail with "EntityManager is closed" and hide the original failure.
+                    || ($managerWasClosed && (!$replayableAfterClose || !$this->managerRegistry instanceof ManagerRegistry))
+                    || !$retryProfile->withinBudget((hrtime(true) - $startedAt) / 1e6, $delay)
+                ) {
+                    throw $this->escapingFailure($throwable);
+                }
+
+                if ($replayableAfterClose) {
+                    $this->clearOpenManager();
+                }
+
+                if (!$connection->isAutoCommit()) {
+                    $this->restartImplicitTransaction($connection);
+                }
+
+                $this->logger?->info('Transient database failure, retrying the operation.', [
+                    'kind'     => $kind->value,
+                    'profile'  => $retryProfile->name,
+                    'attempt'  => $attempt,
+                    'delay_ms' => $delay,
+                ]);
+
+                if ($delay > 0) {
+                    usleep($delay * 1000);
+                }
+            }
+        }
+    }
+
+    private function mayRetry(RetryProfile $profile, TransientFailureKind $kind, int $attempt): bool
+    {
+        if ($attempt >= $profile->maxAttempts()) {
+            return false;
+        }
+
+        return $kind !== TransientFailureKind::LockWaitTimeout || $profile->retryLockWaitTimeout;
+    }
+
+    /**
+     * The transient failure itself when only Doctrine wrapped it (the ORM's 1305 after a nested deadlock, "Commit
+     * failed"), so callers catching DeadlockException / RetryableException still see it; the throwable as is when the
+     * application wrapped it in its own exception.
+     */
+    private function escapingFailure(Throwable $throwable): Throwable
+    {
+        $cause = $this->classifier->transientCause($throwable) ?? $throwable;
+
+        for ($current = $throwable; $current instanceof Throwable && $current !== $cause; $current = $current->getPrevious()) {
+            if (!$current instanceof DriverExceptionInterface && !$current instanceof PDOException && !str_starts_with($current::class, 'Doctrine\\')) {
+                return $throwable;
             }
         }
 
-        throw $lastError ?? new RuntimeException('Deadlock retry loop ended without result.');
+        return $cause;
+    }
+
+    /**
+     * The failed attempt's entities stay scheduled in an open manager (a raw DBAL failure does not close it): clear
+     * it, so the replay does not insert them a second time.
+     */
+    private function clearOpenManager(): void
+    {
+        $manager = $this->currentManager();
+
+        if ($manager->isOpen()) {
+            // @igor-ignore - clearing removes the failed attempt's state; it is the fix for a leak, not a leak
+            $manager->clear();
+        }
+    }
+
+    /**
+     * With auto-commit disabled the failed attempt ran in the implicit transaction: roll it back (DBAL opens a new
+     * one) so the replay starts clean; close when that rollback fails.
+     */
+    private function restartImplicitTransaction(Connection $connection): void
+    {
+        if (!$connection->isTransactionActive()) {
+            return;
+        }
+
+        try {
+            $connection->rollBack();
+        } catch (Throwable) {
+            $connection->close();
+        }
+    }
+
+    private function repairConnection(Connection $connection, int $entryLevel): void
+    {
+        $level  = $connection->getTransactionNestingLevel();
+        $action = $this->repairer->afterFailure($connection, $entryLevel);
+
+        if ($action !== ConnectionRepairer::ACTION_NONE) {
+            $this->logger?->notice('Repaired the Doctrine connection left with an open transaction after a failure.', [
+                'nesting_level' => $level,
+                'entry_level'   => $entryLevel,
+                'action'        => $action,
+            ]);
+        }
     }
 
     private function resolveProfile(?string $profile): RetryProfile
@@ -180,59 +318,5 @@ final class DeadlockRetryService implements DeadlockRetryInterface
         $this->managerRegistry?->resetManager($this->entityManagerName);
 
         return true;
-    }
-
-    private function prepareForRetry(RetryProfile $profile): void
-    {
-        if (!$profile->rollbackOnDeadlock) {
-            return;
-        }
-
-        $manager    = $this->currentManager();
-        $connection = $manager->getConnection();
-
-        if ($connection->isTransactionActive()) {
-            $manager->rollback();
-        }
-    }
-
-    private function sleep(RetryProfile $profile): void
-    {
-        $microseconds = $profile->sleepMicroseconds();
-
-        if ($microseconds > 0) {
-            usleep($microseconds);
-        }
-    }
-
-    private function isDeadlock(Throwable $throwable): bool
-    {
-        $current = $throwable;
-
-        while (true) {
-            if ($current instanceof DeadlockException) {
-                return true;
-            }
-
-            // Only driver-level errors carry a vendor code: an application exception that happens to use code 1213
-            // (or wraps nothing related) must not replay the operation.
-            if ($current instanceof DriverExceptionInterface) {
-                if ($current->getSQLState() === '40001' || $current->getCode() === 1213) {
-                    return true;
-                }
-            } elseif ($current instanceof PDOException) {
-                if ($current->getCode() === '40001' || ($current->errorInfo[1] ?? null) === 1213) {
-                    return true;
-                }
-            }
-
-            $previous = $current->getPrevious();
-
-            if (!$previous instanceof Throwable) {
-                return false;
-            }
-
-            $current = $previous;
-        }
     }
 }

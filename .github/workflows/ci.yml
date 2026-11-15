@@ -90,6 +90,70 @@ jobs:
           SYMFONY_DEPRECATIONS_HELPER: max[direct]=0
         run: composer test-coverage
 
+
+  database:
+    name: Real databases (MySQL 8.4, MariaDB 11.4 and 11.8, PostgreSQL 16)
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: ddrb
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot" --health-interval=5s --health-timeout=5s --health-retries=30
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: ddrb
+        ports: ['3307:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized" --health-interval=5s --health-timeout=5s --health-retries=30
+      mariadb118:
+        image: mariadb:11.8
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: ddrb
+        ports: ['3308:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized" --health-interval=5s --health-timeout=5s --health-retries=30
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: root
+          POSTGRES_DB: ddrb
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd="pg_isready -U postgres" --health-interval=5s --health-timeout=5s --health-retries=30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: json, pdo_mysql, pdo_pgsql
+          coverage: none
+          tools: composer:v2
+
+      - name: Install dependencies
+        run: |
+          composer config platform.php "8.4.99"
+          composer update --prefer-dist --no-progress --no-interaction
+
+      - name: Real deadlock / lock wait / serialization tests (none may be skipped)
+        env:
+          DDRB_MYSQL_URL: mysql://root:root@127.0.0.1:3306/ddrb
+          DDRB_MARIADB_URL: mysql://root:root@127.0.0.1:3307/ddrb
+          DDRB_MARIADB118_URL: mysql://root:root@127.0.0.1:3308/ddrb
+          DDRB_POSTGRES_URL: pgsql://postgres:root@127.0.0.1:5432/ddrb
+        run: vendor/bin/phpunit --testsuite Database --no-coverage --fail-on-skipped
+
   phpstan:
     name: PHPStan
     runs-on: ubuntu-latest

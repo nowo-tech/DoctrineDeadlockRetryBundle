@@ -31,3 +31,6 @@
 
 # Cursor local sandbox (machine-specific; REQ-IDE-005)
 .cursor/sandbox.json
+
+# Local container home / composer cache
+/var/
