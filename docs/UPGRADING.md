@@ -37,6 +37,9 @@ What changes, and what to check:
 
 1. **Requirements: DBAL 4 and ORM 3 only.** `doctrine/dbal ^4.0` and `doctrine/orm ^3.0` (2.x allowed DBAL 3.8 / ORM
    2.13, which were never tested in CI). Stay on 2.4.x until you have moved to DBAL 4.
+   New requirement: `nowo-tech/transaction-contract ^1.0` (no dependencies beyond PHP). The bundle aliases its
+   `TransactionRunnerInterface` to the retrying adapter unless you (or another compiler pass that ran first) defined
+   it.
 2. **The connection is repaired after every failure.** The levels the failed operation left open are rolled back
    (instead of 2.x's single blind `EntityManager::rollback()`); when that rollback fails, which is what happens after
    a deadlock in a nested transaction, the connection is **closed**. A close reconnects on the next query and

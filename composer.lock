@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "488196c1345865b89ebffbcdae65c809",
+    "content-hash": "98053e91610ff4f2cba06db393d0e377",
     "packages": [
         {
             "name": "doctrine/collections",
@@ -949,16 +949,16 @@
         },
         {
             "name": "nowo-tech/transaction-contract",
-            "version": "dev-main",
+            "version": "v1.0.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/nowo-tech/transaction-contract.git",
-                "reference": "ef8023d569ff7db1a689c57d4046ded773aa1650"
+                "reference": "7866e5067f9545e9a8303deaa912a79557038e4f"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/nowo-tech/transaction-contract/zipball/ef8023d569ff7db1a689c57d4046ded773aa1650",
-                "reference": "ef8023d569ff7db1a689c57d4046ded773aa1650",
+                "url": "https://api.github.com/repos/nowo-tech/transaction-contract/zipball/7866e5067f9545e9a8303deaa912a79557038e4f",
+                "reference": "7866e5067f9545e9a8303deaa912a79557038e4f",
                 "shasum": ""
             },
             "require": {
@@ -971,7 +971,6 @@
                 "phpunit/phpunit": "^10.0 || ^11.0",
                 "rector/rector": "^2.0"
             },
-            "default-branch": true,
             "type": "library",
             "extra": {
                 "branch-alias": {
@@ -983,36 +982,7 @@
                     "Nowo\\TransactionContract\\": "src/"
                 }
             },
-            "autoload-dev": {
-                "psr-4": {
-                    "Nowo\\TransactionContract\\Tests\\": "tests/"
-                }
-            },
-            "scripts": {
-                "test": [
-                    "vendor/bin/phpunit --color=always"
-                ],
-                "cs-check": [
-                    "vendor/bin/php-cs-fixer fix --dry-run --diff"
-                ],
-                "cs-fix": [
-                    "vendor/bin/php-cs-fixer fix"
-                ],
-                "phpstan": [
-                    "phpstan analyse --memory-limit=512M"
-                ],
-                "rector-dry": [
-                    "rector process --dry-run --no-progress-bar"
-                ],
-                "qa": [
-                    "@cs-check",
-                    "@phpstan",
-                    "@test"
-                ],
-                "test-coverage": [
-                    "XDEBUG_MODE=coverage vendor/bin/phpunit --colors=always --coverage-text --coverage-clover coverage.xml"
-                ]
-            },
+            "notification-url": "https://packagist.org/downloads/",
             "license": [
                 "MIT"
             ],
@@ -1044,7 +1014,8 @@
                 "issues": "https://github.com/nowo-tech/transaction-contract/issues",
                 "source": "https://github.com/nowo-tech/transaction-contract"
             },
-            "time": "2026-11-14T22:22:31+00:00"
+            "time": "2026-11-15T02:31:32+00:00",
+            "published-time": "2026-11-15T02:39:33+00:00"
         },
         {
             "name": "psr/cache",
@@ -7584,9 +7555,7 @@
     ],
     "aliases": [],
     "minimum-stability": "stable",
-    "stability-flags": {
-        "nowo-tech/transaction-contract": 20
-    },
+    "stability-flags": {},
     "prefer-stable": true,
     "prefer-lowest": false,
     "platform": {

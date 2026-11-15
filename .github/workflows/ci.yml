@@ -50,8 +50,6 @@ jobs:
           extensions: json
           coverage: pcov
           tools: composer:v2
-          # nowo-tech/transaction-contract comes from a vcs repository until it is on Packagist.
-          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Validate composer.json
         run: composer validate --strict
@@ -142,8 +140,6 @@ jobs:
           extensions: json, pdo_mysql, pdo_pgsql
           coverage: none
           tools: composer:v2
-          # nowo-tech/transaction-contract comes from a vcs repository until it is on Packagist.
-          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install dependencies
         run: |
@@ -171,8 +167,6 @@ jobs:
         with:
           php-version: '8.2'
           tools: composer:v2
-          # nowo-tech/transaction-contract comes from a vcs repository until it is on Packagist.
-          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install dependencies
         run: composer install --prefer-dist --no-progress --no-interaction
@@ -194,8 +188,6 @@ jobs:
         with:
           php-version: '8.2'
           tools: composer:v2
-          # nowo-tech/transaction-contract comes from a vcs repository until it is on Packagist.
-          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install dependencies
         run: composer install --prefer-dist --no-progress --no-interaction
@@ -216,7 +208,6 @@ jobs:
         with:
           php-version: '8.2'
           tools: composer:v2
-          # nowo-tech/transaction-contract comes from a vcs repository until it is on Packagist.
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install dependencies
