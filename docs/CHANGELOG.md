@@ -31,46 +31,54 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
-Target 3.0.0: the connection is closed instead of rolled back after a failure, nested calls are no longer retried,
-backoff is jittered by default and lock wait timeouts are retried. See [UPGRADING](UPGRADING.md#unreleased).
+Target 3.0.0: the connection is repaired (rolled back, closed only when that fails) after any failure, nested calls
+and leftover transactions are no longer retried, `retry()` clears the entity manager before a replay, backoff is
+jittered, DBAL 4 / ORM 3 are required. See [UPGRADING](UPGRADING.md#unreleased).
 
 ### Fixed
 
 - **Nested deadlocks on MySQL / MariaDB no longer surface as 1305 or poison the worker's connection.** A deadlock
   (1213) inside a nested transaction drops every savepoint; the ORM's `ROLLBACK TO SAVEPOINT` then fails with 1305,
-  and the old blind `EntityManager::rollback()` before the retry failed with 1305 again and escaped. The connection
+  and 2.x's blind `EntityManager::rollback()` before the retry failed with 1305 again and escaped. The connection
   stayed at nesting level 2, so the next request ran inside a ghost savepoint (its writes committed immediately).
-  After any failure the service now closes the connection when a transaction is still active at level 0
-  (`Connection::close()` resets the nesting level), and inside a caller's transaction rolls back only the levels the
-  operation left open, closing when that fails. Reproduced and covered by real MySQL 8.4 and MariaDB 11.4 tests.
-- Inside a caller's transaction (nesting level > 0 at the call) a transient failure is no longer retried. The old
-  rollback undid the caller's own transaction and replayed only the inner operation in auto-commit (PostgreSQL), or
-  failed with 1305 (MySQL / MariaDB).
+  After any failure the service now rolls back the levels the operation left open and closes the connection only
+  when that rollback fails (`Connection::close()` resets the nesting level). Ordinary failures keep session state
+  (variables, `GET_LOCK`, advisory locks). Covered by real MySQL 8.4 / MariaDB 11.4 tests.
+- Inside a caller's transaction a transient failure is no longer retried. The old rollback undid the caller's own
+  transaction and replayed only the inner operation in auto-commit (PostgreSQL), or failed with 1305 (MySQL).
+- `retry()` clears an open entity manager before replaying: a raw DBAL failure left the failed attempt's entities
+  scheduled, and the replay inserted them twice (QA-DDRB-M2).
+- `rollback_on_deadlock: false` never replays on a connection the failure left in a transaction (QA-DDRB-M3).
+- A 1305 lost savepoint is transient only through the deadlock in its chain: after an implicit commit (DDL inside the
+  transaction) it was retried and the committed work replayed (QA-DDRB-M1).
+- Connections with auto-commit disabled are retried at their implicit transaction level (QA-DDRB-L1).
 
 ### Added
 
-- **Detection of every transient failure**: DBAL `RetryableException` (`LockWaitTimeoutException` included), MySQL /
-  MariaDB `1205`, SQLSTATE `40001` / `40P01`, and the `1305` on a Doctrine savepoint that replaces a nested deadlock
-  (`Failure\TransientFailureClassifier`, `Failure\TransientFailureKind`). Profile option `retry_lock_wait_timeout`
-  (default `true`).
+- **Detection of transient failures**: DBAL `RetryableException`, MySQL / MariaDB `1213`, `1205`, MariaDB `1020`,
+  SQLSTATE `40001` / `40P01` / `55P03` (`Failure\TransientFailureClassifier`, `Failure\TransientFailureKind`).
+  Profile option `retry_lock_wait_timeout` (default `false`) and time budget `max_total_ms` (default none).
 - **Exponential backoff with full jitter**: profile options `backoff_base_ms` (default 100), `backoff_max_ms` (default
   2000) and `jitter` (`full` | `none`). `sleep_ms` stays as an alias of `backoff_base_ms`.
 - **Worker guard** (opt-in, `worker_guard.enabled`): on `kernel.request` (main request, priority 2048) and
   `kernel.terminate` (priority -2048) a connection left in a transaction is rolled back (one level) or closed
-  (deeper, or a failed rollback), and closed entity managers are reset; one `warning` per repair, without SQL.
-  `Worker\ConnectionGuard::repair()` for Messenger or custom loops. Works with FrankenPHP worker mode and
-  `kernel.reset` disabled.
-- **HTTP mapping** (opt-in, `http_mapping.enabled`): a `kernel.exception` listener maps transient failures (and
-  `Nowo\TransactionContract\TransientStorageFailure`, by name) to 503 with `Retry-After` (`retry_after_seconds`,
-  or the exception's hint), and `conflict_exceptions` (default `OptimisticLockException`,
-  `UniqueConstraintViolationException`) to 409. Scoped by `paths` / `routes` prefixes or global; `format: exception`
-  keeps the host's own rendering (problem+json), `format: problem_json` answers RFC 9457 directly; the client never
-  sees SQL.
+  (deeper, or a failed rollback); closed entity managers are reset; open ones are cleared on terminate
+  (`clear_managers`). With `messenger` (default on) the same runs after every Messenger message. Only connections
+  and managers the container already initialised are touched. One `warning` per repair, without SQL.
+- **HTTP mapping** (opt-in, `http_mapping.enabled`): a `kernel.exception` listener (priority -64) maps transient
+  failures (and `Nowo\TransactionContract\TransientStorageFailure`, by name) to 503 with `Retry-After`
+  (`retry_after_seconds`, or the exception's hint), and `conflict_exceptions` (default `OptimisticLockException`,
+  `UniqueConstraintViolationException`, not when they wrap a driver error such as "Commit failed") to 409. Scoped by
+  `paths` (segment boundaries) / `routes` prefixes or global; `format: exception` keeps the host's own rendering,
+  `format: problem_json` answers RFC 9457 directly; the client never sees SQL.
 - `Connection\ConnectionRepairer`, a public service for bundles that clean up after a failed unit of work.
 - Optional PSR-3 logger on `DeadlockRetryService`: retries at `info`, repairs at `notice`, never SQL.
 
 ### Changed
 
+- Requires `doctrine/dbal ^4.0` and `doctrine/orm ^3.0` (DBAL 3 / ORM 2 were never tested).
+- When the service gives up on a transient failure that only Doctrine wrapped, it rethrows the transient exception
+  itself (the `DeadlockException`, not the ORM's 1305 `DriverException`).
 - `retry()` always makes at least one attempt (a negative `max_retries` on a hand-built `RetryProfile` used to throw).
 - The internal "Deadlock retry loop ended without result" `RuntimeException` is gone.
 
@@ -90,8 +98,10 @@ backoff is jittered by default and lock wait timeouts are retried. See [UPGRADIN
 
 - Real-database suite (`tests/Database`, `make test-db`, CI job "Real databases"): two sessions cause a real deadlock
   in a nested flush on MySQL 8.4 and MariaDB 11.4 (clean retry, nesting level 0, next request commits), a real lock
-  wait timeout (retried; exhausted → 503 + `Retry-After`), the worker guard repairing a poisoned connection, and a
-  PostgreSQL 16 serialization failure (40001) in a nested flush.
+  wait timeout (retried; exhausted → 503 + `Retry-After`), the worker guard repairing a poisoned connection and
+  clearing pending changes, a PostgreSQL 16 serialization failure (40001) and lock timeout (55P03), a MariaDB 11.8
+  snapshot conflict (1020), and the QA audit regressions (implicit commit not retried, dirty manager cleared, no
+  replay on a leftover transaction, auto-commit off retried, session locks kept after a domain failure).
 - DDD host case: plain-PHP aggregate, host `TransactionRunner` port and an adapter on the container's
   `DeadlockRetryInterface` alias; a deadlock closes the manager, the unit of work is replayed on the reset manager and
   the domain event is published once, after commit.

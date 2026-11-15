@@ -20,8 +20,25 @@ Root key: `nowo_doctrine_deadlock_retry`.
 | `sleep_ms` | `null` | Alias of `backoff_base_ms` (2.x name); setting both with different values is an error |
 | `backoff_max_ms` | `2000` | Upper bound of one delay (raised to the base if lower) |
 | `jitter` | `full` | `full`: random delay between 0 and the bound; `none`: exactly the bound |
-| `retry_lock_wait_timeout` | `true` | Also retry lock wait timeouts (1205); each attempt may wait `innodb_lock_wait_timeout` |
-| `rollback_on_deadlock` | `true` | Repair the connection after a failure: close it when a transaction is left active at level 0, roll back inside your transaction (close if that fails). `false` leaves the connection as it is (not recommended) |
+| `retry_lock_wait_timeout` | `false` | Also retry lock wait timeouts (MySQL / MariaDB 1205, PostgreSQL 55P03). Each attempt can wait the full `innodb_lock_wait_timeout` (50 s by default) / `lock_timeout`: lower it first (see below) |
+| `max_total_ms` | `null` | Time budget of one `flush()` / `retry()` call: no retry starts once the elapsed time plus the next delay would exceed it. `null` = no budget |
+| `rollback_on_deadlock` | `true` | Repair the connection after a failure: roll back the levels the operation left open, close only if that rollback fails. `false`: leave the connection as it is, and never retry while the failure left a transaction open |
+
+#### Lock wait retries
+
+Enable `retry_lock_wait_timeout` only together with a short lock wait timeout, otherwise one long-held row lock can
+keep a worker busy for `(max_retries + 1) × 50 s`. Set it per connection with a DBAL middleware (or the driver's init
+command), 2–5 s for web traffic, and give web profiles a `max_total_ms`:
+
+```yaml
+# config/packages/doctrine.yaml (MySQL / MariaDB)
+doctrine:
+    dbal:
+        options:
+            1002: 'SET SESSION innodb_lock_wait_timeout = 3'   # PDO::MYSQL_ATTR_INIT_COMMAND
+```
+
+Messenger profiles, where waiting is cheap, can keep longer timeouts.
 
 ### Worker guard options (`worker_guard`)
 
@@ -29,16 +46,18 @@ Root key: `nowo_doctrine_deadlock_retry`.
 |--------|---------|-------------|
 | `enabled` | `false` | Register the `kernel.request` / `kernel.terminate` subscriber |
 | `connections` | `[]` | Connection names to guard; empty = every Doctrine connection |
-| `reset_closed_managers` | `true` | Also reset closed entity managers of every manager in the registry |
+| `reset_closed_managers` | `true` | Also reset closed entity managers (only managers already initialised) |
+| `clear_managers` | `true` | Clear open entity managers on `kernel.terminate` and after each Messenger message (no pending changes or identity map reach the next one) |
+| `messenger` | `true` | Also run the guard after each `WorkerMessageHandledEvent` / `WorkerMessageFailedEvent` (when `symfony/messenger` is installed) |
 
 ### HTTP mapping options (`http_mapping`)
 
 | Option | Default | Description |
 |--------|---------|-------------|
 | `enabled` | `false` | Register the `kernel.exception` listener |
-| `paths` | `[]` | Path prefixes handled; with `routes` empty too, every request |
+| `paths` | `[]` | Path prefixes handled, on segment boundaries (`/api` matches `/api` and `/api/x`, not `/apiary`). With `routes` empty too, **every request** is handled |
 | `routes` | `[]` | Route name prefixes handled |
-| `conflict_exceptions` | `OptimisticLockException`, `UniqueConstraintViolationException` | Classes or interfaces mapped to 409 (searched along the previous chain) |
+| `conflict_exceptions` | `OptimisticLockException`, `UniqueConstraintViolationException` | Classes or interfaces mapped to 409 (searched along the previous chain). A match that wraps a driver error (the ORM's `OptimisticLockException("Commit failed")`, outcome unknown) is not mapped |
 | `format` | `exception` | `exception`: hand a Symfony HttpException to your error rendering; `problem_json`: answer `application/problem+json` directly |
 
 ### Example
@@ -55,7 +74,8 @@ nowo_doctrine_deadlock_retry:
             max_retries: 10
             backoff_base_ms: 500
             backoff_max_ms: 5000
-            retry_lock_wait_timeout: false
+            retry_lock_wait_timeout: true   # with a short innodb_lock_wait_timeout, see above
+            max_total_ms: 30000
         legacy_fixed_sleep:
             max_retries: 2
             sleep_ms: 50          # alias of backoff_base_ms
