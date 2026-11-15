@@ -106,11 +106,16 @@ final class Configuration implements ConfigurationInterface
                         ->defaultValue('full')
                     ->end()
                     ->booleanNode('retry_lock_wait_timeout')
-                        ->info('Also retry lock wait timeouts (MySQL / MariaDB 1205); each attempt may wait innodb_lock_wait_timeout')
-                        ->defaultTrue()
+                        ->info('Also retry lock wait timeouts (MySQL / MariaDB 1205, PostgreSQL 55P03); each attempt may wait innodb_lock_wait_timeout / lock_timeout, so lower those first')
+                        ->defaultFalse()
+                    ->end()
+                    ->integerNode('max_total_ms')
+                        ->info('Time budget of one flush() / retry() call in milliseconds: no retry starts once the elapsed time plus the next delay would exceed it; null = no budget')
+                        ->defaultNull()
+                        ->min(0)
                     ->end()
                     ->booleanNode('rollback_on_deadlock')
-                        ->info('Repair the connection after a failure: close it when a transaction is left active, roll back inside a caller\'s transaction')
+                        ->info('Repair the connection after a failure (roll back the levels the operation left open, close only if that fails). false: leave it as it is, and never retry while a transaction is left open')
                         ->defaultTrue()
                     ->end()
                 ->end()
@@ -122,7 +127,8 @@ final class Configuration implements ConfigurationInterface
                     'sleep_ms'                => null,
                     'backoff_max_ms'          => RetryProfile::DEFAULT_BACKOFF_MAX_MS,
                     'jitter'                  => 'full',
-                    'retry_lock_wait_timeout' => true,
+                    'retry_lock_wait_timeout' => false,
+                    'max_total_ms'            => null,
                     'rollback_on_deadlock'    => true,
                 ],
             ]);
@@ -143,7 +149,15 @@ final class Configuration implements ConfigurationInterface
                     ->scalarPrototype()->cannotBeEmpty()->end()
                 ->end()
                 ->booleanNode('reset_closed_managers')
-                    ->info('Also reset closed entity managers of every manager in the registry')
+                    ->info('Also reset closed entity managers (only managers already initialised)')
+                    ->defaultTrue()
+                ->end()
+                ->booleanNode('clear_managers')
+                    ->info('Clear open entity managers on kernel.terminate and after each Messenger message, so pending changes and the identity map do not reach the next request or message')
+                    ->defaultTrue()
+                ->end()
+                ->booleanNode('messenger')
+                    ->info('Also run the guard after each message handled or failed by a Messenger worker (when symfony/messenger is installed)')
                     ->defaultTrue()
                 ->end()
             ->end();
@@ -160,7 +174,7 @@ final class Configuration implements ConfigurationInterface
             ->canBeEnabled()
             ->children()
                 ->arrayNode('paths')
-                    ->info('Request path prefixes handled (e.g. /api); with routes empty too, every request')
+                    ->info('Request path prefixes handled, matched on segment boundaries (/api matches /api and /api/x, not /apiary); with routes empty too, EVERY request')
                     ->scalarPrototype()->cannotBeEmpty()->end()
                 ->end()
                 ->arrayNode('routes')

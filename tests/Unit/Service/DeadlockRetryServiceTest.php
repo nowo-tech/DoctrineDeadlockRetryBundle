@@ -13,6 +13,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
 use Doctrine\Persistence\ObjectManager;
 use Exception;
+use LogicException;
 use Nowo\DoctrineDeadlockRetryBundle\Config\RetryProfile;
 use Nowo\DoctrineDeadlockRetryBundle\Exception\UnknownRetryProfileException;
 use Nowo\DoctrineDeadlockRetryBundle\Service\DeadlockRetryService;
@@ -39,9 +40,14 @@ final class DeadlockRetryServiceTest extends TestCase
     /** @var list<string|null> */
     private array $requestedNames = [];
 
+    private int $level = 0;
+
+    private int $flushes = 0;
+
     protected function setUp(): void
     {
-        $this->connection    = $this->createMock(Connection::class);
+        $this->connection = $this->createMock(Connection::class);
+        $this->connection->method('isAutoCommit')->willReturn(true);
         $this->entityManager = $this->createMock(EntityManagerInterface::class);
         $this->entityManager->method('getConnection')->willReturn($this->connection);
     }
@@ -62,21 +68,25 @@ final class DeadlockRetryServiceTest extends TestCase
     public function testFlushRetriesOnDeadlockThenSucceeds(): void
     {
         $this->stubOpenManager();
+        $this->trackLevels();
         $deadlock = $this->createDeadlockException();
 
         $this->entityManager
             ->expects($this->exactly(2))
             ->method('flush')
-            ->willReturnOnConsecutiveCalls(
-                $this->throwException($deadlock),
-                null,
-            );
+            ->willReturnCallback(function () use ($deadlock): void {
+                if (++$this->flushes === 1) {
+                    $this->level = 1;
 
-        // Entry level 0, a transaction left active after the failure: the connection is closed, never rolled back.
-        $this->connection->method('getTransactionNestingLevel')->willReturnOnConsecutiveCalls(0, 1, 1);
-        $this->connection->expects($this->once())->method('close');
-        $this->connection->expects($this->never())->method('rollBack');
-        $this->entityManager->expects($this->never())->method('rollback');
+                    throw $deadlock;
+                }
+            });
+
+        // Entry level 0, a transaction left active after the failure: rolled back first, never closed when that works.
+        $this->connection->expects($this->once())->method('rollBack')->willReturnCallback(function (): void {
+            --$this->level;
+        });
+        $this->connection->expects($this->never())->method('close');
 
         $service = $this->createService(['default' => new RetryProfile('default', 1, 0)]);
         $service->flush();
@@ -278,29 +288,50 @@ final class DeadlockRetryServiceTest extends TestCase
         $this->assertSame('recovered', $result);
     }
 
-    public function testRetrySkipsRollbackWhenDisabled(): void
+    public function testNoRepairProfileDoesNotRetryOnALeftoverTransaction(): void
     {
         $this->stubOpenManager();
+        $this->trackLevels();
         $deadlock = $this->createDeadlockException();
+        $attempts = 0;
 
-        $this->connection->method('getTransactionNestingLevel')->willReturnOnConsecutiveCalls(0, 1, 1);
         $this->connection->expects($this->never())->method('close');
         $this->connection->expects($this->never())->method('rollBack');
-        $this->entityManager->expects($this->never())->method('rollback');
 
-        $this->entityManager
-            ->expects($this->exactly(2))
-            ->method('flush')
-            ->willReturnOnConsecutiveCalls(
-                $this->throwException($deadlock),
-                null,
-            );
+        $service = $this->createService(['default' => new RetryProfile('default', 3, 0, rollbackOnDeadlock: false)]);
+        $caught  = null;
 
-        $service = $this->createService([
-            'default' => new RetryProfile('default', 1, 0, rollbackOnDeadlock: false),
-        ]);
+        try {
+            $service->retry(function () use ($deadlock, &$attempts): never {
+                ++$attempts;
+                $this->level = 2;
 
-        $service->flush();
+                throw $deadlock;
+            });
+        } catch (DeadlockException $exception) {
+            $caught = $exception;
+        }
+
+        $this->assertSame($deadlock, $caught);
+        $this->assertSame(1, $attempts, 'No replay inside ghost savepoints.');
+        $this->assertSame(2, $this->level, 'The connection is left as it is.');
+    }
+
+    public function testNoRepairProfileStillRetriesWhenNothingIsLeftOpen(): void
+    {
+        $this->stubOpenManager();
+        $this->trackLevels();
+        $deadlock = $this->createDeadlockException();
+        $attempts = 0;
+
+        $service = $this->createService(['default' => new RetryProfile('default', 1, 0, rollbackOnDeadlock: false)]);
+        $service->retry(static function () use ($deadlock, &$attempts): void {
+            if (++$attempts === 1) {
+                throw $deadlock;
+            }
+        });
+
+        $this->assertSame(2, $attempts);
     }
 
     public function testRetryAlwaysMakesAtLeastOneAttempt(): void
@@ -508,13 +539,13 @@ final class DeadlockRetryServiceTest extends TestCase
         return new DeadlockException($driverException, null);
     }
 
-    public function testLockWaitTimeoutIsRetriedByDefault(): void
+    public function testLockWaitTimeoutIsRetriedWhenTheProfileAllowsIt(): void
     {
         $this->stubOpenManager();
         $attempts = 0;
         $timeout  = new LockWaitTimeoutException($this->driverError(1205, 'HY000'), null);
 
-        $result = $this->createService()->retry(static function () use ($timeout, &$attempts): string {
+        $result = $this->createService(['default' => new RetryProfile('default', 3, 0, retryLockWaitTimeout: true)])->retry(static function () use ($timeout, &$attempts): string {
             if (++$attempts === 1) {
                 throw $timeout;
             }
@@ -526,12 +557,12 @@ final class DeadlockRetryServiceTest extends TestCase
         $this->assertSame(2, $attempts);
     }
 
-    public function testLockWaitTimeoutIsNotRetriedWhenTheProfileSaysSo(): void
+    public function testLockWaitTimeoutIsNotRetriedByDefault(): void
     {
         $this->stubOpenManager();
         $attempts = 0;
         $timeout  = new LockWaitTimeoutException($this->driverError(1205, 'HY000'), null);
-        $service  = $this->createService(['default' => new RetryProfile('default', 3, 0, retryLockWaitTimeout: false)]);
+        $service  = $this->createService(['default' => new RetryProfile('default', 3, 0)]);
 
         $caught = null;
 
@@ -550,37 +581,46 @@ final class DeadlockRetryServiceTest extends TestCase
         $this->assertSame(1, $attempts);
     }
 
-    public function testLostSavepointWithoutTheDeadlockInTheChainIsRetried(): void
+    public function testLostSavepointWithoutTheDeadlockInTheChainIsNotRetried(): void
     {
         $this->stubOpenManager();
         $attempts = 0;
         $lost     = new DriverException($this->driverError(1305, '42000', 'SAVEPOINT DOCTRINE_2 does not exist'), null);
+        $caught   = null;
 
-        $this->createService()->retry(static function () use ($lost, &$attempts): void {
-            if (++$attempts === 1) {
+        try {
+            $this->createService()->retry(static function () use ($lost, &$attempts): never {
+                ++$attempts;
+
                 throw $lost;
-            }
-        });
+            });
+        } catch (DriverException $exception) {
+            $caught = $exception;
+        }
 
-        $this->assertSame(2, $attempts);
+        $this->assertSame($lost, $caught);
+        $this->assertSame(1, $attempts);
     }
 
     public function testNothingIsRetriedInsideACallersTransaction(): void
     {
         $this->stubOpenManager();
+        $this->trackLevels(1);
         $deadlock = $this->createDeadlockException();
         $attempts = 0;
 
         // Entry level 1 (the caller's transaction), level 2 left after the failure: rolled back to 1, not retried.
-        $this->connection->method('getTransactionNestingLevel')->willReturnOnConsecutiveCalls(1, 2, 2, 2);
-        $this->connection->expects($this->once())->method('rollBack');
+        $this->connection->expects($this->once())->method('rollBack')->willReturnCallback(function (): void {
+            --$this->level;
+        });
         $this->connection->expects($this->never())->method('close');
 
         $caught = null;
 
         try {
-            $this->createService()->retry(static function () use ($deadlock, &$attempts): never {
+            $this->createService()->retry(function () use ($deadlock, &$attempts): never {
                 ++$attempts;
+                $this->level = 2;
 
                 throw $deadlock;
             });
@@ -589,19 +629,24 @@ final class DeadlockRetryServiceTest extends TestCase
         }
 
         $this->assertSame($deadlock, $caught);
-
         $this->assertSame(1, $attempts);
+        $this->assertSame(1, $this->level);
     }
 
     public function testNonTransientFailureAlsoRepairsTheConnection(): void
     {
         $this->stubOpenManager();
-        $this->connection->method('getTransactionNestingLevel')->willReturnOnConsecutiveCalls(0, 1, 1);
-        $this->connection->expects($this->once())->method('close');
+        $this->trackLevels();
+        $this->connection->expects($this->once())->method('rollBack')->willReturnCallback(function (): void {
+            --$this->level;
+        });
+        $this->connection->expects($this->never())->method('close');
 
         $this->expectException(RuntimeException::class);
 
-        $this->createService()->retry(static function (): never {
+        $this->createService()->retry(function (): never {
+            $this->level = 1;
+
             throw new RuntimeException('bug');
         });
     }
@@ -609,8 +654,12 @@ final class DeadlockRetryServiceTest extends TestCase
     public function testRetriesAndRepairsAreLoggedWithoutSql(): void
     {
         $this->stubOpenManager();
+        $this->trackLevels();
         $deadlock = $this->createDeadlockException();
-        $this->connection->method('getTransactionNestingLevel')->willReturnOnConsecutiveCalls(0, 2, 2);
+        $this->connection->method('rollBack')->willThrowException(new RuntimeException('1305 SAVEPOINT DOCTRINE_2 does not exist'));
+        $this->connection->expects($this->once())->method('close')->willReturnCallback(function (): void {
+            $this->level = 0;
+        });
 
         $logger = $this->createMock(LoggerInterface::class);
         $logger->expects($this->once())->method('notice')->with(
@@ -624,7 +673,25 @@ final class DeadlockRetryServiceTest extends TestCase
 
         $attempts = 0;
         $service  = new DeadlockRetryService($this->entityManager, ['default' => new RetryProfile('default', 1, 0)], 'default', null, null, $logger);
-        $service->retry(static function () use ($deadlock, &$attempts): void {
+        $service->retry(function () use ($deadlock, &$attempts): void {
+            if (++$attempts === 1) {
+                $this->level = 2;
+
+                throw $deadlock;
+            }
+        });
+
+        $this->assertSame(2, $attempts);
+    }
+
+    public function testRetryClearsAnOpenManagerBeforeReplaying(): void
+    {
+        $this->stubOpenManager();
+        $deadlock = $this->createDeadlockException();
+        $this->entityManager->expects($this->once())->method('clear');
+        $attempts = 0;
+
+        $this->createService()->retry(static function () use ($deadlock, &$attempts): void {
             if (++$attempts === 1) {
                 throw $deadlock;
             }
@@ -633,12 +700,132 @@ final class DeadlockRetryServiceTest extends TestCase
         $this->assertSame(2, $attempts);
     }
 
-    private function driverError(int $code, string $sqlState, string $message = 'driver error'): DriverExceptionInterface
+    public function testTimeBudgetStopsRetries(): void
     {
-        return new class($message, $code, $sqlState) extends Exception implements DriverExceptionInterface {
-            public function __construct(string $message, int $code, private readonly string $sqlState)
+        $this->stubOpenManager();
+        $deadlock = $this->createDeadlockException();
+        $attempts = 0;
+        $caught   = null;
+
+        try {
+            $this->createService(['default' => new RetryProfile('default', 3, 0, maxTotalMs: 0)])->retry(static function () use ($deadlock, &$attempts): never {
+                ++$attempts;
+
+                throw $deadlock;
+            });
+        } catch (DeadlockException $exception) {
+            $caught = $exception;
+        }
+
+        $this->assertSame($deadlock, $caught);
+        $this->assertSame(1, $attempts);
+    }
+
+    public function testExhaustionRethrowsTheDeadlockTheOrmWrapped(): void
+    {
+        $this->stubOpenManager();
+        $deadlock = $this->createDeadlockException();
+        $lost     = new DriverException($this->driverError(1305, '42000', 'SAVEPOINT DOCTRINE_2 does not exist', $deadlock), null);
+        $caught   = null;
+
+        try {
+            $this->createService(['default' => new RetryProfile('default', 0, 0)])->retry(static function () use ($lost): never {
+                throw $lost;
+            });
+        } catch (DeadlockException $exception) {
+            $caught = $exception;
+        }
+
+        $this->assertSame($deadlock, $caught);
+    }
+
+    public function testExhaustionKeepsTheApplicationsOwnWrapper(): void
+    {
+        $this->stubOpenManager();
+        $wrapper = new LogicException('payment failed', 0, $this->createDeadlockException());
+
+        $this->expectExceptionObject($wrapper);
+
+        $this->createService(['default' => new RetryProfile('default', 0, 0)])->retry(static function () use ($wrapper): never {
+            throw $wrapper;
+        });
+    }
+
+    public function testAutoCommitOffConnectionIsRetriedAfterRollingBackTheImplicitTransaction(): void
+    {
+        $connection = $this->createMock(Connection::class);
+        $connection->method('isAutoCommit')->willReturn(false);
+        $connection->method('getTransactionNestingLevel')->willReturn(1);
+        $connection->method('isTransactionActive')->willReturn(true);
+        $connection->expects($this->once())->method('rollBack');
+        $manager = $this->createMock(EntityManagerInterface::class);
+        $manager->method('getConnection')->willReturn($connection);
+        $manager->method('isOpen')->willReturn(true);
+        $timeout  = new LockWaitTimeoutException($this->driverError(1205, 'HY000'), null);
+        $attempts = 0;
+
+        $service = new DeadlockRetryService($manager, ['default' => new RetryProfile('default', 1, 0, retryLockWaitTimeout: true)], 'default');
+        $service->retry(static function () use ($timeout, &$attempts): void {
+            if (++$attempts === 1) {
+                throw $timeout;
+            }
+        });
+
+        $this->assertSame(2, $attempts);
+    }
+
+    public function testAutoCommitOffImplicitTransactionIsClosedWhenItsRollbackFails(): void
+    {
+        $connection = $this->createMock(Connection::class);
+        $connection->method('isAutoCommit')->willReturn(false);
+        $connection->method('getTransactionNestingLevel')->willReturn(1);
+        $connection->method('isTransactionActive')->willReturn(true);
+        $connection->method('rollBack')->willThrowException(new RuntimeException('gone'));
+        $connection->expects($this->once())->method('close');
+        $manager = $this->createMock(EntityManagerInterface::class);
+        $manager->method('getConnection')->willReturn($connection);
+        $manager->method('isOpen')->willReturn(true);
+        $attempts = 0;
+        $deadlock = $this->createDeadlockException();
+
+        (new DeadlockRetryService($manager, ['default' => new RetryProfile('default', 1, 0)], 'default'))->retry(static function () use ($deadlock, &$attempts): void {
+            if (++$attempts === 1) {
+                throw $deadlock;
+            }
+        });
+
+        $this->assertSame(2, $attempts);
+    }
+
+    public function testAutoCommitOffInsideACallersTransactionIsNotRetried(): void
+    {
+        $connection = $this->createMock(Connection::class);
+        $connection->method('isAutoCommit')->willReturn(false);
+        $connection->method('getTransactionNestingLevel')->willReturn(2);
+        $manager = $this->createMock(EntityManagerInterface::class);
+        $manager->method('getConnection')->willReturn($connection);
+        $manager->method('isOpen')->willReturn(true);
+        $deadlock = $this->createDeadlockException();
+
+        $this->expectExceptionObject($deadlock);
+
+        (new DeadlockRetryService($manager, ['default' => new RetryProfile('default', 1, 0)], 'default'))->retry(static function () use ($deadlock): never {
+            throw $deadlock;
+        });
+    }
+
+    private function trackLevels(int $entryLevel = 0): void
+    {
+        $this->level = $entryLevel;
+        $this->connection->method('getTransactionNestingLevel')->willReturnCallback(fn (): int => $this->level);
+    }
+
+    private function driverError(int $code, string $sqlState, string $message = 'driver error', ?Throwable $previous = null): DriverExceptionInterface
+    {
+        return new class($message, $code, $sqlState, $previous) extends Exception implements DriverExceptionInterface {
+            public function __construct(string $message, int $code, private readonly string $sqlState, ?Throwable $previous)
             {
-                parent::__construct($message, $code);
+                parent::__construct($message, $code, $previous);
             }
 
             public function getSQLState(): string

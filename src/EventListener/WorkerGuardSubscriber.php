@@ -12,6 +12,7 @@ use Symfony\Component\HttpKernel\KernelEvents;
 
 /**
  * Runs the ConnectionGuard early on every main request and late on kernel.terminate (opt-in: worker_guard.enabled).
+ * Open entity managers are cleared on kernel.terminate only (worker_guard.clear_managers).
  *
  * @author Héctor Franco Aceituno <hectorfranco@nowo.tech>
  * @copyright 2026 Nowo.tech
@@ -49,6 +50,6 @@ final class WorkerGuardSubscriber implements EventSubscriberInterface
 
     public function onKernelTerminate(TerminateEvent $event): void
     {
-        $this->guard->repair(KernelEvents::TERMINATE);
+        $this->guard->repair(KernelEvents::TERMINATE, true);
     }
 }

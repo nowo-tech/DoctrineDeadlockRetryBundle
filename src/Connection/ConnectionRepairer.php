@@ -13,6 +13,8 @@ use Throwable;
  * DBAL 4 lowers the nesting level only after a successful ROLLBACK TO SAVEPOINT. After a MySQL / MariaDB deadlock in
  * a nested transaction the server has dropped every savepoint, the rollback fails with 1305 and the level stays
  * above 0 until Connection::close(), which also makes the server discard whatever is left of the transaction.
+ * The repairer therefore rolls back first and closes only when that fails: closing loses session state (variables,
+ * session-level locks), so it is the last resort.
  *
  * Stateless: safe as a shared service in a long-running worker.
  *
@@ -28,9 +30,10 @@ final class ConnectionRepairer
     /**
      * Repairs the connection after a failed operation that started at $entryLevel.
      *
-     * At entry level 0 any transaction still active is closed, never rolled back: a rollback is exactly what fails
-     * after a deadlock. Inside a caller's transaction (entry level > 0) the leftover levels are rolled back, and the
-     * connection is closed when a rollback fails.
+     * The levels the operation left open are rolled back down to $entryLevel; the connection is closed only when a
+     * rollback fails (after a nested deadlock the server already dropped the savepoints, so ROLLBACK TO SAVEPOINT
+     * fails with 1305). A plain ROLLBACK of the outermost level never fails that way, so session state (variables,
+     * GET_LOCK / advisory locks) survives ordinary failures.
      *
      * @return string One of the ACTION_* constants
      */
@@ -38,12 +41,6 @@ final class ConnectionRepairer
     {
         if ($connection->getTransactionNestingLevel() <= $entryLevel) {
             return self::ACTION_NONE;
-        }
-
-        if ($entryLevel === 0) {
-            $connection->close();
-
-            return self::ACTION_CLOSED;
         }
 
         return $this->rollBackTo($connection, $entryLevel);

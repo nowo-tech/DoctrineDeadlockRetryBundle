@@ -66,7 +66,17 @@ final class RetryProfileTest extends TestCase
 
         self::assertTrue($profile->rollbackOnDeadlock);
         self::assertTrue($profile->fullJitter);
-        self::assertTrue($profile->retryLockWaitTimeout);
+        self::assertFalse($profile->retryLockWaitTimeout);
+        self::assertNull($profile->maxTotalMs);
         self::assertSame(RetryProfile::DEFAULT_BACKOFF_MAX_MS, $profile->backoffMaxMs);
+        self::assertTrue($profile->withinBudget(1e9, 1000));
+    }
+
+    public function testTimeBudget(): void
+    {
+        $profile = new RetryProfile('p', 3, 100, maxTotalMs: 500);
+
+        self::assertTrue($profile->withinBudget(300.0, 200));
+        self::assertFalse($profile->withinBudget(300.5, 200));
     }
 }

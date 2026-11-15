@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nowo\DoctrineDeadlockRetryBundle\Service;
 
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Driver\Exception as DriverExceptionInterface;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
 use Nowo\DoctrineDeadlockRetryBundle\Config\RetryProfile;
@@ -13,25 +14,33 @@ use Nowo\DoctrineDeadlockRetryBundle\Contract\DeadlockRetryInterface;
 use Nowo\DoctrineDeadlockRetryBundle\Exception\UnknownRetryProfileException;
 use Nowo\DoctrineDeadlockRetryBundle\Failure\TransientFailureClassifier;
 use Nowo\DoctrineDeadlockRetryBundle\Failure\TransientFailureKind;
+use PDOException;
 use Psr\Log\LoggerInterface;
 use Random\Randomizer;
 use Throwable;
 
+use function hrtime;
+use function max;
+use function str_starts_with;
 use function usleep;
 
 /**
  * Executes Doctrine flush (and arbitrary callables) with retries on transient failures: deadlocks (1213, 40P01),
- * serialization failures (40001), lock wait timeouts (1205, per profile) and the 1305 "SAVEPOINT DOCTRINE_n does not
- * exist" that replaces a deadlock in a nested transaction on MySQL / MariaDB.
+ * serialization failures (40001, MariaDB 1020) and, per profile, lock wait timeouts (1205, 55P03). The ORM's 1305
+ * "SAVEPOINT DOCTRINE_n does not exist" after a nested deadlock is transient through the deadlock it carries; when
+ * the service gives up, that deadlock is what it rethrows.
  *
- * After any failure the connection is repaired before anything else runs on it: at entry level 0 a transaction left
- * active is closed (Connection::close() resets the nesting level; a rollback is what fails after a deadlock), and
- * inside a caller's transaction the leftover levels are rolled back, or the connection closed when that fails.
+ * After any failure the connection is repaired before anything else runs on it: the levels the operation left open
+ * are rolled back, and the connection is closed only when that rollback fails (after a nested deadlock the
+ * savepoints are gone; Connection::close() resets the nesting level). Before a replay an open entity manager is
+ * cleared, so the failed attempt's changes are not flushed again.
  * A closed entity manager is reset through the ManagerRegistry so the next attempt, and the next request served by
  * a long-running worker, get an open manager.
  *
- * Inside a caller's transaction (nesting level > 0 when the call starts) nothing is retried: the database rolled
- * back, or aborted, the whole transaction, so only its owner can replay it. The failure is rethrown.
+ * Inside a caller's transaction (nesting level > 0 when the call starts, > 1 with auto-commit disabled) nothing is
+ * retried: the database rolled back, or aborted, the whole transaction, so only its owner can replay it. With
+ * rollback_on_deadlock disabled nothing is retried on a connection the failure left in a transaction. Retries stop
+ * at max_retries or when the profile's max_total_ms budget would be exceeded.
  *
  * Retries wait with exponential backoff and full jitter (see RetryProfile). The service holds no per-request state.
  *
@@ -142,7 +151,11 @@ final class DeadlockRetryService implements DeadlockRetryInterface
         $retryProfile = $this->resolveProfile($profile);
         $connection   = $this->currentManager()->getConnection();
         $entryLevel   = $connection->getTransactionNestingLevel();
-        $attempt      = 0;
+        // With auto-commit disabled DBAL keeps an implicit transaction open at level 1: that is the outermost level.
+        $floor     = max($entryLevel, $connection->isAutoCommit() ? 0 : 1);
+        $outermost = $floor === ($connection->isAutoCommit() ? 0 : 1);
+        $startedAt = hrtime(true);
+        $attempt   = 0;
 
         while (true) {
             ++$attempt;
@@ -158,17 +171,33 @@ final class DeadlockRetryService implements DeadlockRetryInterface
 
                 $managerWasClosed = $this->recoverClosedManager();
 
-                if (!$kind instanceof TransientFailureKind || !$this->mayRetry($retryProfile, $kind, $entryLevel, $attempt)) {
-                    throw $throwable;
-                }
-
-                // A closed manager can only be replaced through the registry: without one, every further attempt
-                // would fail with "EntityManager is closed" and hide the original failure.
-                if ($managerWasClosed && (!$replayableAfterClose || !$this->managerRegistry instanceof ManagerRegistry)) {
+                if (!$kind instanceof TransientFailureKind) {
                     throw $throwable;
                 }
 
                 $delay = $retryProfile->delayMilliseconds($attempt, $this->randomizer);
+
+                if (!$outermost
+                    || !$this->mayRetry($retryProfile, $kind, $attempt)
+                    // Never replay on a connection the failure left in a transaction (rollback_on_deadlock: false):
+                    // the replay would run inside ghost savepoints and auto-commit.
+                    || $connection->getTransactionNestingLevel() > $floor
+                    // A closed manager can only be replaced through the registry: without one, every further attempt
+                    // would fail with "EntityManager is closed" and hide the original failure.
+                    || ($managerWasClosed && (!$replayableAfterClose || !$this->managerRegistry instanceof ManagerRegistry))
+                    || !$retryProfile->withinBudget((hrtime(true) - $startedAt) / 1e6, $delay)
+                ) {
+                    throw $this->escapingFailure($throwable);
+                }
+
+                if ($replayableAfterClose) {
+                    $this->clearOpenManager();
+                }
+
+                if (!$connection->isAutoCommit()) {
+                    $this->restartImplicitTransaction($connection);
+                }
+
                 $this->logger?->info('Transient database failure, retrying the operation.', [
                     'kind'     => $kind->value,
                     'profile'  => $retryProfile->name,
@@ -183,13 +212,62 @@ final class DeadlockRetryService implements DeadlockRetryInterface
         }
     }
 
-    private function mayRetry(RetryProfile $profile, TransientFailureKind $kind, int $entryLevel, int $attempt): bool
+    private function mayRetry(RetryProfile $profile, TransientFailureKind $kind, int $attempt): bool
     {
-        if ($attempt >= $profile->maxAttempts() || $entryLevel > 0) {
+        if ($attempt >= $profile->maxAttempts()) {
             return false;
         }
 
         return $kind !== TransientFailureKind::LockWaitTimeout || $profile->retryLockWaitTimeout;
+    }
+
+    /**
+     * The transient failure itself when only Doctrine wrapped it (the ORM's 1305 after a nested deadlock, "Commit
+     * failed"), so callers catching DeadlockException / RetryableException still see it; the throwable as is when the
+     * application wrapped it in its own exception.
+     */
+    private function escapingFailure(Throwable $throwable): Throwable
+    {
+        $cause = $this->classifier->transientCause($throwable) ?? $throwable;
+
+        for ($current = $throwable; $current instanceof Throwable && $current !== $cause; $current = $current->getPrevious()) {
+            if (!$current instanceof DriverExceptionInterface && !$current instanceof PDOException && !str_starts_with($current::class, 'Doctrine\\')) {
+                return $throwable;
+            }
+        }
+
+        return $cause;
+    }
+
+    /**
+     * The failed attempt's entities stay scheduled in an open manager (a raw DBAL failure does not close it): clear
+     * it, so the replay does not insert them a second time.
+     */
+    private function clearOpenManager(): void
+    {
+        $manager = $this->currentManager();
+
+        if ($manager->isOpen()) {
+            // @igor-ignore - clearing removes the failed attempt's state; it is the fix for a leak, not a leak
+            $manager->clear();
+        }
+    }
+
+    /**
+     * With auto-commit disabled the failed attempt ran in the implicit transaction: roll it back (DBAL opens a new
+     * one) so the replay starts clean; close when that rollback fails.
+     */
+    private function restartImplicitTransaction(Connection $connection): void
+    {
+        if (!$connection->isTransactionActive()) {
+            return;
+        }
+
+        try {
+            $connection->rollBack();
+        } catch (Throwable) {
+            $connection->close();
+        }
     }
 
     private function repairConnection(Connection $connection, int $entryLevel): void

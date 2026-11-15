@@ -13,53 +13,52 @@ use Throwable;
 
 use function is_int;
 use function is_string;
-use function preg_match;
 
 /**
  * Tells whether a failure is transient (replaying the whole transaction can succeed), walking the previous chain.
  *
  * Only driver-level errors carry a vendor code: an application exception that happens to use code 1213 is not
- * transient. The classifier only matches error codes and Doctrine's own savepoint names; it never returns or logs
- * an exception message, which can contain SQL and parameters.
+ * transient. A 1305 "SAVEPOINT DOCTRINE_n does not exist" is never transient on its own: savepoints also vanish on an
+ * implicit commit (DDL inside the transaction), after which replaying would repeat committed work. After a nested
+ * deadlock the ORM's 1305 carries the deadlock in its previous chain (PHP chains the exception a finally block
+ * replaces), and the deadlock is what makes it transient. A connection lost during a commit is not transient either:
+ * its outcome is unknown.
  *
- * Stateless: safe as a shared service in a long-running worker.
+ * The classifier only reads error codes; it never returns or logs an exception message, which can contain SQL and
+ * parameters. Stateless: safe as a shared service in a long-running worker.
  *
  * @author Héctor Franco Aceituno <hectorfranco@nowo.tech>
  * @copyright 2026 Nowo.tech
  */
 final class TransientFailureClassifier
 {
-    /** "SAVEPOINT DOCTRINE_2 does not exist" (DBAL 4) or "SAVEPOINT DOCTRINE2_SAVEPOINT_2 does not exist" (DBAL 3). */
-    private const LOST_DOCTRINE_SAVEPOINT = '/SAVEPOINT\s+`?DOCTRINE(?:2_SAVEPOINT)?_\d+`?\s+does not exist/i';
-
     /**
-     * @return TransientFailureKind|null The most precise kind found in the chain, or null when the failure is not transient
+     * @return TransientFailureKind|null The kind of the first transient failure in the chain, or null when there is none
      */
     public function classify(Throwable $throwable): ?TransientFailureKind
     {
-        $lostSavepoint = false;
+        $cause = $this->transientCause($throwable);
 
-        for ($current = $throwable; $current instanceof Throwable; $current = $current->getPrevious()) {
-            $kind = $this->classifyOne($current);
-
-            if ($kind === TransientFailureKind::LostSavepoint) {
-                // Keep looking: the deadlock itself may still be further down the chain.
-                $lostSavepoint = true;
-
-                continue;
-            }
-
-            if ($kind instanceof TransientFailureKind) {
-                return $kind;
-            }
-        }
-
-        return $lostSavepoint ? TransientFailureKind::LostSavepoint : null;
+        return $cause instanceof Throwable ? $this->classifyOne($cause) : null;
     }
 
     public function isTransient(Throwable $throwable): bool
     {
-        return $this->classify($throwable) instanceof TransientFailureKind;
+        return $this->transientCause($throwable) instanceof Throwable;
+    }
+
+    /**
+     * @return Throwable|null The first exception of the chain (the throwable itself included) that is a transient failure
+     */
+    public function transientCause(Throwable $throwable): ?Throwable
+    {
+        for ($current = $throwable; $current instanceof Throwable; $current = $current->getPrevious()) {
+            if ($this->classifyOne($current) instanceof TransientFailureKind) {
+                return $current;
+            }
+        }
+
+        return null;
     }
 
     private function classifyOne(Throwable $throwable): ?TransientFailureKind
@@ -69,11 +68,11 @@ final class TransientFailureClassifier
         }
 
         if ($throwable instanceof DriverExceptionInterface) {
-            $kind = $this->fromCodes($throwable->getCode(), $throwable->getSQLState(), $throwable);
+            $kind = $this->fromCodes($throwable->getCode(), $throwable->getSQLState());
         } elseif ($throwable instanceof PDOException) {
             $vendorCode = $throwable->errorInfo[1] ?? null;
             $sqlState   = $throwable->errorInfo[0] ?? $throwable->getCode();
-            $kind       = $this->fromCodes(is_int($vendorCode) ? $vendorCode : 0, is_string($sqlState) ? $sqlState : null, $throwable);
+            $kind       = $this->fromCodes(is_int($vendorCode) ? $vendorCode : 0, is_string($sqlState) ? $sqlState : null);
         } else {
             $kind = null;
         }
@@ -89,14 +88,13 @@ final class TransientFailureClassifier
         return $throwable instanceof RetryableException ? TransientFailureKind::Retryable : null;
     }
 
-    private function fromCodes(int $vendorCode, ?string $sqlState, Throwable $throwable): ?TransientFailureKind
+    private function fromCodes(int $vendorCode, ?string $sqlState): ?TransientFailureKind
     {
         return match (true) {
-            $vendorCode === 1213, $sqlState === '40P01'                                                       => TransientFailureKind::Deadlock,
-            $vendorCode === 1205                                                                              => TransientFailureKind::LockWaitTimeout,
-            $sqlState === '40001'                                                                             => TransientFailureKind::SerializationFailure,
-            $vendorCode === 1305 && preg_match(self::LOST_DOCTRINE_SAVEPOINT, $throwable->getMessage()) === 1 => TransientFailureKind::LostSavepoint,
-            default                                                                                           => null,
+            $vendorCode === 1213, $sqlState === '40P01' => TransientFailureKind::Deadlock,
+            $vendorCode === 1205, $sqlState === '55P03' => TransientFailureKind::LockWaitTimeout,
+            $sqlState === '40001', $vendorCode === 1020 => TransientFailureKind::SerializationFailure,
+            default                                     => null,
         };
     }
 }

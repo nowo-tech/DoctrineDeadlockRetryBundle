@@ -6,6 +6,8 @@ namespace Nowo\DoctrineDeadlockRetryBundle\Tests\Unit\EventListener;
 
 use Doctrine\DBAL\Driver\Exception as DriverExceptionInterface;
 use Doctrine\DBAL\Exception\DeadlockException;
+use Doctrine\DBAL\Exception\DriverException;
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\OptimisticLockException;
 use Exception;
 use LogicException;
@@ -32,7 +34,7 @@ final class TransientFailureExceptionListenerTest extends TestCase
 {
     public function testSubscribesToKernelException(): void
     {
-        self::assertSame([KernelEvents::EXCEPTION => ['onKernelException', 0]], TransientFailureExceptionListener::getSubscribedEvents());
+        self::assertSame([KernelEvents::EXCEPTION => ['onKernelException', -64]], TransientFailureExceptionListener::getSubscribedEvents());
     }
 
     public function testDeadlockBecomesA503HttpExceptionForTheHostRenderer(): void
@@ -132,6 +134,51 @@ final class TransientFailureExceptionListenerTest extends TestCase
         $event = $this->event($this->deadlock(), '/shop');
         $listener->onKernelException($event);
         self::assertInstanceOf(DeadlockException::class, $event->getThrowable(), 'No route attribute: not in scope.');
+
+        $event = $this->event($this->deadlock(), '/apiary');
+        $listener->onKernelException($event);
+        self::assertInstanceOf(DeadlockException::class, $event->getThrowable(), 'Path prefixes match on segment boundaries.');
+
+        $event = $this->event($this->deadlock(), '/api');
+        $listener->onKernelException($event);
+        self::assertInstanceOf(HttpExceptionInterface::class, $event->getThrowable());
+
+        $event = $this->event($this->deadlock(), '/anything');
+        (new TransientFailureExceptionListener(pathPrefixes: ['/']))->onKernelException($event);
+        self::assertInstanceOf(HttpExceptionInterface::class, $event->getThrowable(), '"/" matches every path.');
+    }
+
+    public function testCommitFailedWrappingADriverErrorIsNotAConflict(): void
+    {
+        $driver = new class('server has gone away', 2006) extends Exception implements DriverExceptionInterface {
+            public function getSQLState(): string
+            {
+                return 'HY000';
+            }
+        };
+        $commitFailed = new OptimisticLockException('Commit failed', null, new DriverException($driver, null));
+        $event        = $this->event($commitFailed);
+
+        (new TransientFailureExceptionListener(conflictExceptions: [OptimisticLockException::class]))->onKernelException($event);
+
+        self::assertSame($commitFailed, $event->getThrowable(), 'Unknown commit outcome: neither 409 nor 503.');
+    }
+
+    public function testADriverLevelConflictClassStillMaps(): void
+    {
+        $driver = new class('Duplicate entry', 1062) extends Exception implements DriverExceptionInterface {
+            public function getSQLState(): string
+            {
+                return '23000';
+            }
+        };
+        $event = $this->event(new UniqueConstraintViolationException($driver, null));
+
+        (new TransientFailureExceptionListener(conflictExceptions: [UniqueConstraintViolationException::class]))->onKernelException($event);
+
+        $mapped = $event->getThrowable();
+        self::assertInstanceOf(HttpExceptionInterface::class, $mapped);
+        self::assertSame(409, $mapped->getStatusCode());
     }
 
     private function event(Throwable $throwable, string $path = '/', ?string $route = null): ExceptionEvent

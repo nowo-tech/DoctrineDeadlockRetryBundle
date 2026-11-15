@@ -42,7 +42,8 @@ final class WorkerGuardSubscriberTest extends TestCase
         $connection->expects($this->exactly(2))->method('close');
 
         $registry = $this->createMock(ManagerRegistry::class);
-        $registry->method('getConnections')->willReturn(['default' => $connection]);
+        $registry->method('getConnectionNames')->willReturn(['default' => 'doctrine.dbal.default_connection']);
+        $registry->method('getConnection')->willReturn($connection);
 
         $subscriber = new WorkerGuardSubscriber(new ConnectionGuard($registry, null, [], false));
         $kernel     = $this->createMock(HttpKernelInterface::class);

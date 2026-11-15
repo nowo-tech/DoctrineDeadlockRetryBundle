@@ -27,7 +27,10 @@ final class ConfigurationTest extends TestCase
         $this->assertNull($config['profiles']['default']['sleep_ms']);
         $this->assertSame(2000, $config['profiles']['default']['backoff_max_ms']);
         $this->assertSame('full', $config['profiles']['default']['jitter']);
-        $this->assertTrue($config['profiles']['default']['retry_lock_wait_timeout']);
+        $this->assertFalse($config['profiles']['default']['retry_lock_wait_timeout']);
+        $this->assertNull($config['profiles']['default']['max_total_ms']);
+        $this->assertTrue($config['worker_guard']['clear_managers']);
+        $this->assertTrue($config['worker_guard']['messenger']);
         $this->assertTrue($config['profiles']['default']['rollback_on_deadlock']);
         $this->assertSame(1, $config['retry_after_seconds']);
         $this->assertFalse($config['worker_guard']['enabled']);
