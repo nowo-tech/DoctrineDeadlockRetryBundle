@@ -32,6 +32,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Demo: `demo/symfony8/composer.lock` locks the bundle at 3.0.0 with its new dependency `nowo-tech/transaction-contract`, so the demo boots again and `make demo-smoke` / the demo smoke workflow pass (REQ-TEST-011).
+
+### Documentation
+
+- `docs/SECURITY.md` updated for 3.0: attack surface, threat model and mitigations, logging table, dependencies, permissions; AI audit row points to the 3.0.0 audit (REQ-SEC-001).
+- `docs/PSR.md`: PSR-3 Logger is **Adopted** (REQ-CS-007).
+- Spec Kit baseline maps all 18 `src/` files and `spec.md` gains the 3.0 FRs (REQ-SPECKIT-001/003).
+- README: plain links in the Documentation lists, TS/JS and Python N/A (REQ-DOCS-002, REQ-TEST-007); `FRANKENPHP-WORKER-AUDIT.md` TOC complete (REQ-DOCS-005).
+
 ## [3.0.0] - 2026-11-15
 
 Target 3.0.0: the connection is repaired (rolled back, closed only when that fails) after any failure, nested calls

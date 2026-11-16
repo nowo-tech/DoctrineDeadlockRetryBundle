@@ -74,9 +74,20 @@ Symfony bundle that retries Doctrine `flush()` and arbitrary callables when DBAL
 
 ---
 
+### Load readiness (3.0)
+
+- **FR-CLASS-001**: `TransientFailureClassifier` decides from driver error codes along the previous chain whether a failure is transient (`TransientFailureKind`: deadlock, lock wait timeout, serialization failure, DBAL `RetryableException`); a bare `1305` savepoint error and a connection lost during commit are never transient; messages are never read or logged.
+- **FR-RETRY-001**: Profiles bound retries with jittered exponential backoff (`backoff_base_ms`, alias `sleep_ms`; `backoff_max_ms`) and an optional total budget `max_total_ms`.
+- **FR-REPAIR-001**: `ConnectionRepairer` brings a connection back to a known nesting level after a failure (rollback first, close only when the rollback fails).
+- **FR-WORKER-001**: Opt-in `worker_guard`: `WorkerGuardSubscriber` (request start / `kernel.terminate`) and `MessengerWorkerGuardSubscriber` (message handled / failed) run `ConnectionGuard`, which repairs connections left in a transaction, resets closed managers and optionally clears managers; only services already initialised are touched; each repair logs one warning without SQL.
+- **FR-HTTP-001**: Opt-in `http_mapping`: `TransientFailureExceptionListener` maps transient failures that reach the kernel to `503` + `Retry-After` and configured conflict classes to `409` (Symfony `HttpException` or RFC 9457 problem+json), with a generic client text.
+- **FR-TX-001**: `DeadlockRetryTransactionRunner` implements `nowo-tech/transaction-contract`'s `TransactionRunnerInterface`; `TransactionRunnerAliasPass` aliases the contract to it.
+- **FR-SVC-005**: `DeadlockRetryInterface` is the public contract of `DeadlockRetryService`.
+- **FR-DI-002**: `NowoDoctrineDeadlockRetryServiceIds` holds the bundle's service ids for compiler passes and hosts.
+
 ## Success Criteria
 
-- **SC-001**: **7/7** production files under `src/` mapped in [`code-inventory.md`](code-inventory.md).
+- **SC-001**: **18/18** production files under `src/` mapped in [`code-inventory.md`](code-inventory.md).
 - **SC-002**: Documented config keys match `Configuration.php` and [`docs/CONFIGURATION.md`](../../docs/CONFIGURATION.md).
 - **SC-003**: `make qa` / `make release-check` pass in CI.
 - **SC-004**: PHPUnit covers flush retry, profile selection, rollback, non-deadlock passthrough, closed-manager reset, and no leak across requests without kernel reset.

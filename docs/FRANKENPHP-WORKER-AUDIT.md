@@ -14,6 +14,7 @@
 - [Execution model assumed](#execution-model-assumed)
 - [Summary](#summary)
 - [Services reviewed](#services-reviewed)
+- [Kept-alive container test](#kept-alive-container-test)
 - [Findings](#findings)
   - [W-01 — A deadlock in `flush()` closes the EntityManager; retries and later requests hit a closed manager (Medium)](#w-01--a-deadlock-in-flush-closes-the-entitymanager-retries-and-later-requests-hit-a-closed-manager-medium)
   - [W-02 — Retry backoff blocks the worker thread with `usleep()` (Low)](#w-02--retry-backoff-blocks-the-worker-thread-with-usleep-low)

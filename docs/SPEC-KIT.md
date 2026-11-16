@@ -206,7 +206,7 @@ find src -type f ! -path '*/assets/dist/*' ! -name '*.test.ts' | wc -l
 
 The **Total production sources** row in `code-inventory.md` must match this count.
 
-In **DoctrineDeadlockRetryBundle**, the baseline inventory covers **7/7** files — see [`specs/001-baseline/code-inventory.md`](../specs/001-baseline/code-inventory.md).
+In **DoctrineDeadlockRetryBundle**, the baseline inventory covers **18/18** files — see [`specs/001-baseline/code-inventory.md`](../specs/001-baseline/code-inventory.md).
 
 ---
 
