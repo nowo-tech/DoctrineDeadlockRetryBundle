@@ -58,7 +58,7 @@ public function save(Order $order): void
 
 - [Installation](docs/INSTALLATION.md)
 - [Configuration](docs/CONFIGURATION.md)
-- [Usage](docs/USAGE.md) — standard Symfony host and [DDD / hexagonal host](docs/USAGE.md#using-it-from-a-ddd--hexagonal-application)
+- [Usage](docs/USAGE.md)
 - [Contributing](docs/CONTRIBUTING.md)
 - [Code of Conduct](CODE_OF_CONDUCT.md)
 - [Changelog](docs/CHANGELOG.md)
@@ -71,16 +71,19 @@ public function save(Order $order): void
 
 ### Additional documentation
 
+- [DDD / hexagonal host](docs/USAGE.md#using-it-from-a-ddd--hexagonal-application)
 - [PSR evaluation (REQ-CS-007)](docs/PSR.md)
-- [Demo (Symfony 7 & 8)](demo/README.md) — run `make -C demo up-symfony8` from the bundle root.
-- [Demo with FrankenPHP](docs/DEMO-FRANKENPHP.md) — `FRANKENPHP_MODE` (`classic` \| `worker`, default **worker**); `make demo-smoke` (REQ-TEST-011).
-- [FrankenPHP worker audit](docs/FRANKENPHP-WORKER-AUDIT.md) — scenario B (`reset_kernel=false`) compatibility.
+- [Demo (Symfony 7 & 8)](demo/README.md)
+- [Demo with FrankenPHP](docs/DEMO-FRANKENPHP.md)
+- [FrankenPHP worker audit](docs/FRANKENPHP-WORKER-AUDIT.md)
 - [GitHub Actions CI requirements](docs/GITHUB_CI.md)
 
 ## Tests and coverage
 
 - Tests: PHPUnit (PHP)
 - PHP: 100%
+- TS/JS: N/A
+- Python: N/A
 
 ## License
 
