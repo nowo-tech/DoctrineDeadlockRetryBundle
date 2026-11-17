@@ -66,6 +66,7 @@ final class NowoDoctrineDeadlockRetryExtension extends Extension
                     $profileConfig['jitter'] === 'full',
                     (bool) $profileConfig['retry_lock_wait_timeout'],
                     is_int($profileConfig['max_total_ms'] ?? null) ? $profileConfig['max_total_ms'] : null,
+                    (int) ($profileConfig['backoff_min_ms'] ?? 0),
                 ])
                 ->setPublic(false);
 

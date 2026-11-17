@@ -16,8 +16,9 @@ use Throwable;
  * connection and entity manager are repaired between attempts.
  *
  * When the retries are exhausted, or the call runs inside a caller's transaction (nothing is retried there), a
- * transient failure is rethrown as TransientStorageFailure with the configured Retry-After hint and the storage
- * error as previous. Other failures are rethrown unchanged.
+ * transient failure is rethrown as TransientStorageFailure with the storage error (or the wrapper that carries it,
+ * such as Messenger's HandlerFailedException) as previous, and the Retry-After hint of a TransientStorageFailure found
+ * in that chain, else the configured one. Other failures are rethrown unchanged.
  *
  * Stateless: safe as a shared service in a long-running worker.
  *
@@ -49,7 +50,10 @@ final class DeadlockRetryTransactionRunner implements TransactionRunnerInterface
             throw $failure;
         } catch (Throwable $throwable) {
             if ($this->classifier->isTransient($throwable)) {
-                throw TransientStorageFailure::fromPrevious($throwable, $this->retryAfterSeconds);
+                // A TransientStorageFailure carried deeper (inside a HandlerFailedException) keeps its own hint.
+                $hint = $this->classifier->storageFailure($throwable)?->retryAfterSeconds() ?? $this->retryAfterSeconds;
+
+                throw TransientStorageFailure::fromPrevious($throwable, $hint);
             }
 
             throw $throwable;

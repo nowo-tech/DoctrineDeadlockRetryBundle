@@ -26,6 +26,7 @@ final class ConfigurationTest extends TestCase
         $this->assertSame(100, $config['profiles']['default']['backoff_base_ms']);
         $this->assertNull($config['profiles']['default']['sleep_ms']);
         $this->assertSame(2000, $config['profiles']['default']['backoff_max_ms']);
+        $this->assertSame(0, $config['profiles']['default']['backoff_min_ms']);
         $this->assertSame('full', $config['profiles']['default']['jitter']);
         $this->assertFalse($config['profiles']['default']['retry_lock_wait_timeout']);
         $this->assertNull($config['profiles']['default']['max_total_ms']);
@@ -57,6 +58,37 @@ final class ConfigurationTest extends TestCase
         $this->assertSame(10, $config['profiles']['heavy']['max_retries']);
         $this->assertSame(250, $config['profiles']['heavy']['sleep_ms']);
         $this->assertFalse($config['profiles']['heavy']['rollback_on_deadlock']);
+        $this->assertSame(0, $config['profiles']['heavy']['backoff_min_ms'], 'A custom profile keeps no floor unless it sets one.');
+    }
+
+    public function testBackoffMinMayEqualTheMaxButNotExceedIt(): void
+    {
+        $config = $this->processConfiguration([['profiles' => ['p' => ['backoff_base_ms' => 50, 'backoff_max_ms' => 200, 'backoff_min_ms' => 200]]]]);
+        $this->assertSame(200, $config['profiles']['p']['backoff_min_ms']);
+
+        // A base above the cap raises the cap (as RetryProfile does), so the floor may go up to the base.
+        $config = $this->processConfiguration([['profiles' => ['p' => ['backoff_base_ms' => 300, 'backoff_max_ms' => 200, 'backoff_min_ms' => 250]]]]);
+        $this->assertSame(250, $config['profiles']['p']['backoff_min_ms']);
+
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('backoff_min_ms must not exceed backoff_max_ms');
+        $this->processConfiguration([['profiles' => ['p' => ['backoff_max_ms' => 200, 'backoff_min_ms' => 201]]]]);
+    }
+
+    public function testABudgetBelowTheBackoffMinIsRejected(): void
+    {
+        $config = $this->processConfiguration([['profiles' => ['p' => ['backoff_min_ms' => 20, 'max_total_ms' => 20]]]]);
+        $this->assertSame(20, $config['profiles']['p']['max_total_ms']);
+
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('max_total_ms must not be below backoff_min_ms');
+        $this->processConfiguration([['profiles' => ['p' => ['backoff_min_ms' => 20, 'max_total_ms' => 19]]]]);
+    }
+
+    public function testNegativeBackoffMinIsRejected(): void
+    {
+        $this->expectException(InvalidConfigurationException::class);
+        $this->processConfiguration([['profiles' => ['p' => ['backoff_min_ms' => -1]]]]);
     }
 
     public function testEntityManagerName(): void

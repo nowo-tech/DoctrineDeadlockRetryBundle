@@ -15,6 +15,9 @@ use Nowo\DoctrineDeadlockRetryBundle\EventListener\MessengerWorkerGuardSubscribe
 use Nowo\DoctrineDeadlockRetryBundle\EventListener\TransientFailureExceptionListener;
 use Nowo\DoctrineDeadlockRetryBundle\EventListener\WorkerGuardSubscriber;
 use Nowo\DoctrineDeadlockRetryBundle\Service\DeadlockRetryService;
+use Nowo\DoctrineDeadlockRetryBundle\Sleep\SleeperInterface;
+use Nowo\DoctrineDeadlockRetryBundle\Sleep\UsleepSleeper;
+use Nowo\DoctrineDeadlockRetryBundle\Tests\Fixtures\Sleep\RecordingSleeper;
 use Nowo\DoctrineDeadlockRetryBundle\Transaction\DeadlockRetryTransactionRunner;
 use Nowo\DoctrineDeadlockRetryBundle\Worker\ConnectionGuard;
 use Nowo\TransactionContract\TransactionRunnerInterface;
@@ -123,12 +126,47 @@ final class NowoDoctrineDeadlockRetryExtensionTest extends TestCase
         ], $this->container);
 
         $this->assertSame(
-            ['default', 3, 20, false, 20, false, true, 1500],
+            ['default', 3, 20, false, 20, false, true, 1500, 0],
             $this->container->getDefinition('nowo_doctrine_deadlock_retry.profile.default')->getArguments(),
             'The cap is raised to the base.',
         );
-        $this->assertSame(['legacy', 3, 70, true, 2000, true, false, null], $this->container->getDefinition('nowo_doctrine_deadlock_retry.profile.legacy')->getArguments());
+        $this->assertSame(['legacy', 3, 70, true, 2000, true, false, null, 0], $this->container->getDefinition('nowo_doctrine_deadlock_retry.profile.legacy')->getArguments());
         $this->assertSame(100, $this->container->getDefinition('nowo_doctrine_deadlock_retry.profile.plain')->getArgument(2));
+    }
+
+    public function testBeaconWriteUnitProfile(): void
+    {
+        $this->extension->load([[
+            'profiles' => [
+                'write_unit' => ['max_retries' => 3, 'backoff_base_ms' => 200, 'backoff_max_ms' => 200, 'backoff_min_ms' => 20, 'jitter' => 'full', 'retry_lock_wait_timeout' => true],
+            ],
+            'default_profile' => 'write_unit',
+        ]], $this->container);
+
+        $this->assertSame(
+            ['write_unit', 3, 200, true, 200, true, true, null, 20],
+            $this->container->getDefinition('nowo_doctrine_deadlock_retry.profile.write_unit')->getArguments(),
+        );
+    }
+
+    public function testBackoffMinAboveMaxIsRejected(): void
+    {
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('backoff_min_ms must not exceed backoff_max_ms');
+
+        $this->extension->load([['profiles' => ['default' => ['backoff_base_ms' => 20, 'backoff_max_ms' => 200, 'backoff_min_ms' => 201]]]], $this->container);
+    }
+
+    public function testSleeperIsAliasedToUsleepAndHostCanOverrideIt(): void
+    {
+        $this->extension->load([], $this->container);
+
+        $this->assertSame(UsleepSleeper::class, (string) $this->container->getAlias(SleeperInterface::class));
+        $this->assertSame(SleeperInterface::class, (string) $this->container->getDefinition(DeadlockRetryService::class)->getArgument('$sleeper'));
+
+        $this->container->register('app.recording_sleeper', RecordingSleeper::class);
+        $this->container->setAlias(SleeperInterface::class, 'app.recording_sleeper');
+        $this->assertSame('app.recording_sleeper', (string) $this->container->getAlias(SleeperInterface::class));
     }
 
     public function testConflictingSleepMsAndBackoffBaseAreRejected(): void

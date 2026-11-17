@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nowo\DoctrineDeadlockRetryBundle\EventListener;
 
 use Doctrine\DBAL\Driver\Exception as DriverExceptionInterface;
+use Nowo\DoctrineDeadlockRetryBundle\Failure\ThrowableChain;
 use Nowo\DoctrineDeadlockRetryBundle\Failure\TransientFailureClassifier;
 use Nowo\TransactionContract\TransientStorageFailure;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
@@ -29,6 +30,9 @@ use function str_starts_with;
  * Transient: whatever TransientFailureClassifier recognises (deadlock, lock wait timeout, serialization failure, the
  * ORM's 1305 that carries a nested deadlock, any DBAL RetryableException) and the framework-free
  * Nowo\TransactionContract\TransientStorageFailure, whose retryAfterSeconds() hint wins over the configured value.
+ * A TransientStorageFailure is found anywhere in the previous chain or inside a Messenger HandlerFailedException; other
+ * transient failures follow TransientFailureClassifier (inside a HandlerFailedException, every wrapped exception must
+ * be transient), and so do the conflict classes (every wrapped exception must be a conflict).
  *
  * Format "exception" (default) replaces the throwable with a Symfony HttpException carrying the status and headers,
  * so the host's own error rendering (problem+json included) produces the response. Format "problem_json" sets an
@@ -60,7 +64,7 @@ final class TransientFailureExceptionListener implements EventSubscriberInterfac
      * @param int $retryAfterSeconds Retry-After value of a 503
      * @param list<string> $pathPrefixes Request path prefixes handled (with $routePrefixes empty too: every request)
      * @param list<string> $routePrefixes Route name prefixes handled
-     * @param list<string> $conflictExceptions Exception classes (or interfaces) mapped to 409, searched along the previous chain
+     * @param list<string> $conflictExceptions Exception classes (or interfaces) mapped to 409, searched along the previous chain; inside a HandlerFailedException every wrapped exception must match
      * @param string $format FORMAT_EXCEPTION or FORMAT_PROBLEM_JSON
      */
     public function __construct(
@@ -156,37 +160,37 @@ final class TransientFailureExceptionListener implements EventSubscriberInterfac
      */
     private function retryAfter(Throwable $throwable): ?int
     {
-        for ($current = $throwable; $current instanceof Throwable; $current = $current->getPrevious()) {
-            if ($current instanceof TransientStorageFailure) {
-                return $current->retryAfterSeconds() ?? $this->retryAfterSeconds;
-            }
+        $storageFailure = $this->classifier->storageFailure($throwable);
+
+        if ($storageFailure instanceof TransientStorageFailure) {
+            return $storageFailure->retryAfterSeconds() ?? $this->retryAfterSeconds;
         }
 
         return $this->classifier->isTransient($throwable) ? $this->retryAfterSeconds : null;
     }
 
     /**
-     * A configured class matches anywhere in the chain. A matching exception that is not itself a driver exception but
-     * wraps one (the ORM's OptimisticLockException("Commit failed") around a failed COMMIT, whose outcome is unknown)
-     * is not a conflict.
+     * A configured class matches along the chain; inside a HandlerFailedException only when every wrapped exception is a
+     * conflict. A matching exception that is not itself a driver exception but wraps one (the ORM's
+     * OptimisticLockException("Commit failed") around a failed COMMIT, whose outcome is unknown) is not a conflict.
      */
     private function isConflict(Throwable $throwable): bool
     {
-        for ($current = $throwable; $current instanceof Throwable; $current = $current->getPrevious()) {
+        return ThrowableChain::resolve($throwable, function (Throwable $current): Throwable|false|null {
             foreach ($this->conflictExceptions as $class) {
                 if ($current instanceof $class) {
-                    return $current instanceof DriverExceptionInterface || !$this->wrapsDriverException($current);
+                    return $current instanceof DriverExceptionInterface || !$this->wrapsDriverException($current) ? $current : false;
                 }
             }
-        }
 
-        return false;
+            return null;
+        }) instanceof Throwable;
     }
 
     private function wrapsDriverException(Throwable $throwable): bool
     {
-        for ($current = $throwable->getPrevious(); $current instanceof Throwable; $current = $current->getPrevious()) {
-            if ($current instanceof DriverExceptionInterface) {
+        foreach (ThrowableChain::flatten($throwable) as $current) {
+            if ($current !== $throwable && $current instanceof DriverExceptionInterface) {
                 return true;
             }
         }

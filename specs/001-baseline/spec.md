@@ -84,6 +84,9 @@ Symfony bundle that retries Doctrine `flush()` and arbitrary callables when DBAL
 - **FR-TX-001**: `DeadlockRetryTransactionRunner` implements `nowo-tech/transaction-contract`'s `TransactionRunnerInterface`; `TransactionRunnerAliasPass` aliases the contract to it.
 - **FR-SVC-005**: `DeadlockRetryInterface` is the public contract of `DeadlockRetryService`.
 - **FR-DI-002**: `NowoDoctrineDeadlockRetryServiceIds` holds the bundle's service ids for compiler passes and hosts.
+- **FR-CLASS-002**: Failure chains are walked through `ThrowableChain`: `getPrevious()` and, with `symfony/messenger`, `WrappedExceptionsInterface::getWrappedExceptions()`, recursively, at most 64 levels and 256 throwables. A `HandlerFailedException` is transient only when every wrapped exception is transient and its envelope has no `HandledStamp` (strongest kind wins); a `DelayedMessageHandlingException` never is; 409 needs every wrapped exception to be a conflict. A `TransientStorageFailure` without previous is `Retryable`, over a storage error it takes that error's kind, over anything else it is not transient (503 still applies to any `TransientStorageFailure`).
+- **FR-SLEEP-001**: `DeadlockRetryService` waits between attempts through `SleeperInterface::sleepMilliseconds(int)`, aliased to `UsleepSleeper`; hosts re-alias it (optional constructor argument, stateless).
+- **FR-RETRY-002**: Profile option `backoff_min_ms` (default 0, at most `backoff_max_ms`, at most `max_total_ms` when set): with full jitter each delay is uniform between it and the exponential bound; without jitter the bound never falls below it.
 
 ## Success Criteria
 

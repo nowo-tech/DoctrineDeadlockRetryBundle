@@ -4,16 +4,20 @@ declare(strict_types=1);
 
 namespace Nowo\DoctrineDeadlockRetryBundle\Config;
 
+use InvalidArgumentException;
 use Random\Randomizer;
 
 use function max;
 use function min;
+use function sprintf;
 
 /**
  * Retry policy for a named profile: attempts, backoff, cleanup and which transient failures are retried.
  *
- * The delay before retry n (1-based) is min(backoffMaxMs, sleepMs × 2^(n-1)). With full jitter (the default) the
- * actual delay is a uniform random value between 0 and that bound, so concurrent workers do not retry in lockstep.
+ * The delay before retry n (1-based) is bounded by min(backoffMaxMs, sleepMs × 2^(n-1)). With full jitter (the default)
+ * the actual delay is a uniform random value between backoffMinMs (0 by default) and that bound, so concurrent workers
+ * do not retry in lockstep. A bound below backoffMinMs is raised to it; without jitter the delay is the bound itself
+ * (never below backoffMinMs).
  *
  * @author Héctor Franco Aceituno <hectorfranco@nowo.tech>
  * @copyright 2026 Nowo.tech
@@ -35,6 +39,9 @@ final readonly class RetryProfile
      * @param bool $fullJitter Whether each delay is a random value between 0 and the exponential bound
      * @param bool $retryLockWaitTimeout Whether lock wait timeouts (1205, 55P03) are retried, not only deadlocks and serialization failures
      * @param int|null $maxTotalMs Time budget of the whole call in milliseconds: no retry starts once the elapsed time plus the next delay would exceed it (null = no budget)
+     * @param int $backoffMinMs Lower bound of a single delay in milliseconds (0 = none); at most backoffMaxMs
+     *
+     * @throws InvalidArgumentException When backoffMinMs is negative, above the effective backoffMaxMs or above maxTotalMs (no retry could ever start)
      */
     public function __construct(
         public string $name,
@@ -45,8 +52,17 @@ final readonly class RetryProfile
         public bool $fullJitter = true,
         public bool $retryLockWaitTimeout = false,
         public ?int $maxTotalMs = null,
+        public int $backoffMinMs = 0,
     ) {
         $this->backoffMaxMs = max($backoffMaxMs, $sleepMs);
+
+        if ($backoffMinMs < 0 || $backoffMinMs > $this->backoffMaxMs) {
+            throw new InvalidArgumentException(sprintf('Retry profile "%s": backoff_min_ms (%d) must be between 0 and backoff_max_ms (%d).', $name, $backoffMinMs, $this->backoffMaxMs));
+        }
+
+        if ($maxTotalMs !== null && $maxTotalMs < $backoffMinMs) {
+            throw new InvalidArgumentException(sprintf('Retry profile "%s": max_total_ms (%d) must not be below backoff_min_ms (%d), or no retry could start.', $name, $maxTotalMs, $backoffMinMs));
+        }
     }
 
     /**
@@ -83,7 +99,7 @@ final readonly class RetryProfile
      */
     public function delayMilliseconds(int $retry, Randomizer $randomizer): int
     {
-        if ($this->sleepMs === 0) {
+        if ($this->sleepMs === 0 && $this->backoffMinMs === 0) {
             return 0;
         }
 
@@ -93,8 +109,8 @@ final readonly class RetryProfile
             $bound *= 2;
         }
 
-        $bound = min($bound, $this->backoffMaxMs);
+        $bound = max(min($bound, $this->backoffMaxMs), $this->backoffMinMs);
 
-        return $this->fullJitter ? $randomizer->getInt(0, $bound) : $bound;
+        return $this->fullJitter ? $randomizer->getInt($this->backoffMinMs, $bound) : $bound;
     }
 }

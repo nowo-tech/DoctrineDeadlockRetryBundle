@@ -18,6 +18,9 @@ use Nowo\DoctrineDeadlockRetryBundle\Transaction\DeadlockRetryTransactionRunner;
 use Nowo\TransactionContract\TransactionRunnerInterface;
 use Nowo\TransactionContract\TransientStorageFailure;
 use PHPUnit\Framework\TestCase;
+use stdClass;
+use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\Exception\HandlerFailedException;
 
 /**
  * @author Héctor Franco Aceituno <hectorfranco@nowo.tech>
@@ -104,6 +107,75 @@ final class DeadlockRetryTransactionRunnerTest extends TestCase
 
         self::assertSame($inner, $caught);
         self::assertSame(1, $this->transactions, 'retry_lock_wait_timeout is off by default: not retried.');
+    }
+
+    public function testAHandlerFailedExceptionOverADeadlockBecomesTransientStorageFailure(): void
+    {
+        $failed = new HandlerFailedException(new Envelope(new stdClass()), ['b' => $this->deadlock()]);
+        $caught = null;
+
+        try {
+            $this->runner(maxRetries: 1, retryAfterSeconds: 7)->run(static function () use ($failed): never {
+                throw $failed;
+            });
+        } catch (TransientStorageFailure $failure) {
+            $caught = $failure;
+        }
+
+        self::assertSame(7, $caught->retryAfterSeconds());
+        self::assertSame($failed, $caught->getPrevious());
+        self::assertSame(2, $this->transactions);
+    }
+
+    public function testATransientStorageFailureInsideAHandlerFailedExceptionKeepsItsHint(): void
+    {
+        $failed = new HandlerFailedException(new Envelope(new stdClass()), ['a' => $this->deadlock(), 'b' => new TransientStorageFailure(4)]);
+        $caught = null;
+
+        try {
+            $this->runner(maxRetries: 0, retryAfterSeconds: 7)->run(static function () use ($failed): never {
+                throw $failed;
+            });
+        } catch (TransientStorageFailure $failure) {
+            $caught = $failure;
+        }
+
+        self::assertSame(4, $caught->retryAfterSeconds());
+        self::assertSame($failed, $caught->getPrevious());
+    }
+
+    public function testATransientStorageFailureOverACacheErrorIsRethrownAsIsWithoutReplay(): void
+    {
+        $inner  = TransientStorageFailure::fromPrevious(new LogicException('cache backend down'));
+        $caught = null;
+
+        try {
+            $this->runner(maxRetries: 3)->run(static function () use ($inner): never {
+                throw $inner;
+            });
+        } catch (TransientStorageFailure $failure) {
+            $caught = $failure;
+        }
+
+        self::assertSame($inner, $caught);
+        self::assertSame(1, $this->transactions);
+    }
+
+    public function testADomainErrorNextToADeadlockIsNotReplayedNorWrapped(): void
+    {
+        $failed = new HandlerFailedException(new Envelope(new stdClass()), ['audit' => new LogicException('bug'), 'pay' => $this->deadlock()]);
+        $caught = null;
+
+        try {
+            $this->runner(maxRetries: 3)->run(static function () use ($failed): never {
+                throw $failed;
+            });
+        } catch (HandlerFailedException $exception) {
+            $caught = $exception;
+        }
+
+        self::assertSame($failed, $caught);
+        self::assertSame(1, $this->transactions);
     }
 
     public function testOtherFailuresAreRethrownUnchanged(): void

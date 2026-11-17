@@ -8,6 +8,11 @@ services:
 
   Nowo\DoctrineDeadlockRetryBundle\Connection\ConnectionRepairer: ~
 
+  Nowo\DoctrineDeadlockRetryBundle\Sleep\UsleepSleeper: ~
+
+  # Alias it to your own implementation to replace how the service waits between attempts.
+  Nowo\DoctrineDeadlockRetryBundle\Sleep\SleeperInterface: '@Nowo\DoctrineDeadlockRetryBundle\Sleep\UsleepSleeper'
+
   Nowo\DoctrineDeadlockRetryBundle\Service\DeadlockRetryService:
     arguments:
       $profiles: []
@@ -15,5 +20,6 @@ services:
       $managerRegistry: '@?doctrine'
       $logger: '@?logger'
       $randomizer: null
+      $sleeper: '@Nowo\DoctrineDeadlockRetryBundle\Sleep\SleeperInterface'
 
   Nowo\DoctrineDeadlockRetryBundle\Contract\DeadlockRetryInterface: '@Nowo\DoctrineDeadlockRetryBundle\Service\DeadlockRetryService'

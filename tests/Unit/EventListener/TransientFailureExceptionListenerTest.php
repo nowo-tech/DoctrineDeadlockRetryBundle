@@ -14,12 +14,15 @@ use LogicException;
 use Nowo\DoctrineDeadlockRetryBundle\EventListener\TransientFailureExceptionListener;
 use Nowo\TransactionContract\TransientStorageFailure;
 use PHPUnit\Framework\TestCase;
+use stdClass;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Event\ExceptionEvent;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\HttpKernel\HttpKernelInterface;
 use Symfony\Component\HttpKernel\KernelEvents;
+use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\Exception\HandlerFailedException;
 use Throwable;
 
 /**
@@ -79,6 +82,44 @@ final class TransientFailureExceptionListenerTest extends TestCase
         $mapped = $event->getThrowable();
         self::assertInstanceOf(HttpExceptionInterface::class, $mapped);
         self::assertSame(['Retry-After' => '2'], $mapped->getHeaders(), 'No hint: the configured value.');
+    }
+
+    public function testFailuresInsideAHandlerFailedExceptionAreMapped(): void
+    {
+        $event = $this->event(new HandlerFailedException(new Envelope(new stdClass()), ['b' => $this->deadlock()]));
+        (new TransientFailureExceptionListener(retryAfterSeconds: 2))->onKernelException($event);
+        $mapped = $event->getThrowable();
+        self::assertInstanceOf(HttpExceptionInterface::class, $mapped);
+        self::assertSame(503, $mapped->getStatusCode());
+        self::assertSame(['Retry-After' => '2'], $mapped->getHeaders());
+
+        $event = $this->event(new HandlerFailedException(new Envelope(new stdClass()), ['a' => new LogicException('bug'), 'b' => new TransientStorageFailure(8)]));
+        (new TransientFailureExceptionListener(retryAfterSeconds: 2))->onKernelException($event);
+        $mapped = $event->getThrowable();
+        self::assertInstanceOf(HttpExceptionInterface::class, $mapped);
+        self::assertSame(['Retry-After' => '8'], $mapped->getHeaders(), 'Any TransientStorageFailure answers 503 with its hint, as in 3.0.');
+
+        $event = $this->event(new HandlerFailedException(new Envelope(new stdClass()), ['a' => new OptimisticLockException('stale', null), 'b' => new UniqueConstraintViolationException($this->driverError(1062, '23000'), null)]));
+        (new TransientFailureExceptionListener(conflictExceptions: [OptimisticLockException::class, UniqueConstraintViolationException::class]))->onKernelException($event);
+        $mapped = $event->getThrowable();
+        self::assertInstanceOf(HttpExceptionInterface::class, $mapped);
+        self::assertSame(409, $mapped->getStatusCode(), 'Every wrapped exception is a conflict.');
+
+        $bug   = new HandlerFailedException(new Envelope(new stdClass()), ['a' => new LogicException('bug')]);
+        $event = $this->event($bug);
+        (new TransientFailureExceptionListener())->onKernelException($event);
+        self::assertSame($bug, $event->getThrowable());
+    }
+
+    public function testADomainErrorNextToADeadlockOrAConflictStaysA500(): void
+    {
+        foreach ([['audit' => new LogicException('bug'), 'pay' => $this->deadlock()], ['pay' => $this->deadlock(), 'audit' => new LogicException('bug')], ['a' => new OptimisticLockException('stale', null), 'b' => new LogicException('bug')]] as $exceptions) {
+            $failed = new HandlerFailedException(new Envelope(new stdClass()), $exceptions);
+            $event  = $this->event($failed);
+            (new TransientFailureExceptionListener(conflictExceptions: [OptimisticLockException::class]))->onKernelException($event);
+            self::assertSame($failed, $event->getThrowable(), 'Left to the host: a 500.');
+            self::assertNull($event->getResponse());
+        }
     }
 
     public function testConflictBecomes409(): void
@@ -186,6 +227,21 @@ final class TransientFailureExceptionListenerTest extends TestCase
         }
 
         return new ExceptionEvent($this->createMock(HttpKernelInterface::class), $request, HttpKernelInterface::MAIN_REQUEST, $throwable);
+    }
+
+    private function driverError(int $code, string $sqlState): DriverExceptionInterface
+    {
+        return new class('driver error', $code, $sqlState) extends Exception implements DriverExceptionInterface {
+            public function __construct(string $message, int $code, private readonly string $sqlState)
+            {
+                parent::__construct($message, $code);
+            }
+
+            public function getSQLState(): string
+            {
+                return $this->sqlState;
+            }
+        };
     }
 
     private function deadlock(): DeadlockException
