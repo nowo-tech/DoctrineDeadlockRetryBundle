@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## Table of contents
 
 - [[Unreleased]](#unreleased)
+- [[3.1.0] - 2026-11-17](#310---2026-11-17)
 - [[3.0.0] - 2026-11-15](#300---2026-11-15)
 - [[2.4.0] - 2026-11-13](#240---2026-11-13)
 - [[2.3.0] - 2026-11-13](#230---2026-11-13)
@@ -31,6 +32,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - [[1.0.0] - 2026-05-20](#100---2026-05-20)
 
 ## [Unreleased]
+
+## [3.1.0] - 2026-11-17
 
 ### Added
 
@@ -75,6 +78,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `docs/PSR.md`: PSR-3 Logger is **Adopted** (REQ-CS-007).
 - Spec Kit baseline maps all 18 `src/` files and `spec.md` gains the 3.0 FRs (REQ-SPECKIT-001/003).
 - README: plain links in the Documentation lists, TS/JS and Python N/A (REQ-DOCS-002, REQ-TEST-007); `FRANKENPHP-WORKER-AUDIT.md` TOC complete (REQ-DOCS-005).
+
+[3.1.0]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v3.1.0
 
 ## [3.0.0] - 2026-11-15
 

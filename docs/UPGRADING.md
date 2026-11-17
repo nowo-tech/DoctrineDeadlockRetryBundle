@@ -3,6 +3,7 @@
 ## Table of contents
 
 - [Unreleased](#unreleased)
+- [To 3.1.0](#to-310)
 - [To 3.0.0](#to-300)
 - [To 2.4.0](#to-240)
 - [To 2.3.0](#to-230)
@@ -27,6 +28,14 @@
 - [To 1.0.0](#to-100)
 
 ## Unreleased
+
+## To 3.1.0
+
+From **3.0.0**:
+
+```bash
+composer update nowo-tech/doctrine-deadlock-retry-bundle
+```
 
 From **3.0.0**, `composer update nowo-tech/doctrine-deadlock-retry-bundle`. No configuration change is required.
 
