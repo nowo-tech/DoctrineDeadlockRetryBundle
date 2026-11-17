@@ -34,6 +34,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- `rector.php` targets PHP 8.2, the `require.php` floor (REQ-CS-003).
 - Demo: `demo/symfony8/composer.lock` locks the bundle at 3.0.0 with its new dependency `nowo-tech/transaction-contract`, so the demo boots again and `make demo-smoke` / the demo smoke workflow pass (REQ-TEST-011).
 
 ### Documentation
