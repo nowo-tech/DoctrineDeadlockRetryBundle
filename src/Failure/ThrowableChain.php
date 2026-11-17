@@ -18,9 +18,10 @@ use function spl_object_id;
  * a WrappedExceptionsInterface holds (HandlerFailedException, DelayedMessageHandlingException), recursively.
  *
  * Order is depth-first, pre-order, previous before wrapped: for a plain chain it is exactly the getPrevious() order.
- * Each throwable is visited once (HandlerFailedException's previous is also its first wrapped exception, and a
- * custom wrapper may point back to itself). The walk stops at MAX_DEPTH levels below the throwable and after
- * MAX_NODES throwables, so a hostile or accidental cycle or fan-out cannot hang a worker.
+ * Each throwable is listed once (HandlerFailedException's previous is also its first wrapped exception, and a
+ * custom wrapper may point back to itself); one reached again by a shorter path is expanded again from that depth,
+ * so what it carries is not lost to the depth bound. The walk stops at MAX_DEPTH levels below the throwable and after
+ * MAX_NODES throwables (and MAX_STEPS stack entries), so a hostile or accidental cycle or fan-out cannot hang a worker.
  *
  * Stateless: safe in a long-running worker.
  *
@@ -37,26 +38,34 @@ final class ThrowableChain
     /** Most throwables visited in one walk. */
     public const MAX_NODES = 256;
 
+    /** Most stack entries processed in one walk (re-expansions included). */
+    public const MAX_STEPS = 4096;
+
     /**
      * @return list<Throwable> The throwable first, then what it carries
      */
     public static function flatten(Throwable $throwable): array
     {
-        $visited = [];
-        $result  = [];
+        /** @var array<int, int> $expandedAt shallowest depth each listed throwable was reached at */
+        $expandedAt = [];
+        $result     = [];
         /** @var list<array{Throwable, int}> $stack */
         $stack = [[$throwable, 0]];
+        $steps = 0;
 
-        while ($stack !== [] && count($result) < self::MAX_NODES) {
+        while ($stack !== [] && count($result) < self::MAX_NODES && ++$steps <= self::MAX_STEPS) {
             [$current, $depth] = array_pop($stack);
             $id                = spl_object_id($current);
 
-            if (isset($visited[$id])) {
-                continue;
+            if (isset($expandedAt[$id])) {
+                if ($depth >= $expandedAt[$id]) {
+                    continue;
+                }
+            } else {
+                $result[] = $current;
             }
 
-            $visited[$id] = true;
-            $result[]     = $current;
+            $expandedAt[$id] = $depth;
 
             if ($depth >= self::MAX_DEPTH) {
                 continue;

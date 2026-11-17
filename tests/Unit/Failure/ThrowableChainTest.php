@@ -57,6 +57,24 @@ final class ThrowableChainTest extends TestCase
         self::assertNotContains($deepest, $flattened);
     }
 
+    public function testAThrowableReachedAgainByAShorterPathIsExpandedFromThere(): void
+    {
+        $deadlockCause = new RuntimeException('carried by the shared exception');
+        $shared        = new RuntimeException('shared', 0, $deadlockCause);
+        $longBranch    = $shared;
+
+        for ($i = 0; $i < ThrowableChain::MAX_DEPTH - 1; ++$i) {
+            $longBranch = new RuntimeException('wrapper', 0, $longBranch);
+        }
+
+        // The first branch reaches $shared at MAX_DEPTH (not expanded), the second one at depth 1.
+        $failed    = new HandlerFailedException(new Envelope(new stdClass()), ['long' => $longBranch, 'short' => $shared]);
+        $flattened = ThrowableChain::flatten($failed);
+
+        self::assertContains($deadlockCause, $flattened);
+        self::assertCount(ThrowableChain::MAX_DEPTH + 2, $flattened, 'Each throwable listed once.');
+    }
+
     public function testASelfReferencingWrapperTerminates(): void
     {
         $leaf    = new RuntimeException('leaf');

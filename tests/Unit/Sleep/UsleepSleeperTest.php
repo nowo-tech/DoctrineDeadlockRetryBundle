@@ -25,14 +25,13 @@ final class UsleepSleeperTest extends TestCase
         self::assertGreaterThanOrEqual(5.0, (hrtime(true) - $start) / 1e6);
     }
 
-    public function testZeroAndNegativeDelaysReturnAtOnce(): void
+    public function testZeroAndNegativeDelaysNeverReachUsleep(): void
     {
-        $sleeper = new UsleepSleeper();
-        $start   = hrtime(true);
+        // usleep(-50000) throws a ValueError: returning normally proves the guard skipped it.
+        $this->expectNotToPerformAssertions();
 
+        $sleeper = new UsleepSleeper();
         $sleeper->sleepMilliseconds(0);
         $sleeper->sleepMilliseconds(-50);
-
-        self::assertLessThan(20.0, (hrtime(true) - $start) / 1e6);
     }
 }

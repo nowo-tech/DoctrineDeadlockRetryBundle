@@ -99,6 +99,7 @@ Three retries on deadlocks (1213) and lock wait timeouts (1205), each delay rand
 
 ```yaml
 nowo_doctrine_deadlock_retry:
+    default_profile: write_unit             # required when write_unit is the only profile
     profiles:
         write_unit:
             max_retries: 3                  # up to 4 attempts

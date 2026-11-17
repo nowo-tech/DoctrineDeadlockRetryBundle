@@ -114,6 +114,20 @@ final class TransientFailureClassifierTest extends TestCase
         self::assertFalse($classifier->isTransient(new RuntimeException('one more', 0, $current)), 'Beyond the bound: not walked.');
     }
 
+    public function testADeadlockOnASharedBranchIsFoundThroughItsShortestPath(): void
+    {
+        $deadlock = new DeadlockException(self::driver(1213, '40001'), null);
+        $shared   = new RuntimeException('shared', 0, $deadlock);
+        $long     = $shared;
+
+        for ($i = 0; $i < ThrowableChain::MAX_DEPTH - 1; ++$i) {
+            $long = new RuntimeException('wrapper', 0, $long);
+        }
+
+        $classifier = new TransientFailureClassifier();
+        self::assertSame($deadlock, $classifier->transientCause(self::handlerFailed(['long' => $long, 'short' => $shared])));
+    }
+
     /**
      * @param array<string, Throwable> $exceptions
      */
