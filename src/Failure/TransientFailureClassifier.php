@@ -16,7 +16,12 @@ use function is_int;
 use function is_string;
 
 /**
- * Tells whether a failure is transient (replaying the whole transaction can succeed), walking the previous chain.
+ * Tells whether a failure is transient (replaying the whole transaction can succeed), walking the previous chain and
+ * the exceptions a Messenger HandlerFailedException wraps (see ThrowableChain: recursive, depth-bounded).
+ *
+ * A Nowo\TransactionContract\TransientStorageFailure anywhere in the chain makes the failure transient. When a
+ * storage error it carries is itself classified, that error decides the kind (so a lock wait timeout stays under
+ * retry_lock_wait_timeout); otherwise the kind is Retryable.
  *
  * Only driver-level errors carry a vendor code: an application exception that happens to use code 1213 is not
  * transient. A 1305 "SAVEPOINT DOCTRINE_n does not exist" is never transient on its own: savepoints also vanish on an
@@ -40,6 +45,10 @@ final class TransientFailureClassifier
     {
         $cause = $this->transientCause($throwable);
 
+        if ($cause instanceof TransientStorageFailure) {
+            return TransientFailureKind::Retryable;
+        }
+
         return $cause instanceof Throwable ? $this->classifyOne($cause) : null;
     }
 
@@ -49,12 +58,35 @@ final class TransientFailureClassifier
     }
 
     /**
-     * @return Throwable|null The first exception of the chain (the throwable itself included) that is a transient failure
+     * @return Throwable|null The first storage error of the chain (the throwable itself included) that is transient, else
+     *                        the first TransientStorageFailure, else null
      */
     public function transientCause(Throwable $throwable): ?Throwable
     {
-        for ($current = $throwable; $current instanceof Throwable; $current = $current->getPrevious()) {
+        $storageFailure = null;
+
+        foreach (ThrowableChain::flatten($throwable) as $current) {
+            if ($current instanceof TransientStorageFailure) {
+                $storageFailure ??= $current;
+
+                continue;
+            }
+
             if ($this->classifyOne($current) instanceof TransientFailureKind) {
+                return $current;
+            }
+        }
+
+        return $storageFailure;
+    }
+
+    /**
+     * @return TransientStorageFailure|null The first TransientStorageFailure of the chain (the throwable itself included)
+     */
+    public function storageFailure(Throwable $throwable): ?TransientStorageFailure
+    {
+        foreach (ThrowableChain::flatten($throwable) as $current) {
+            if ($current instanceof TransientStorageFailure) {
                 return $current;
             }
         }
@@ -64,12 +96,6 @@ final class TransientFailureClassifier
 
     private function classifyOne(Throwable $throwable): ?TransientFailureKind
     {
-        // A TransientStorageFailure from a nested runner is classified by the storage error it carries (so a lock
-        // wait timeout stays under retry_lock_wait_timeout); one without a previous error is plainly retryable.
-        if ($throwable instanceof TransientStorageFailure) {
-            return $throwable->getPrevious() instanceof Throwable ? null : TransientFailureKind::Retryable;
-        }
-
         if ($throwable instanceof LockWaitTimeoutException) {
             return TransientFailureKind::LockWaitTimeout;
         }

@@ -14,6 +14,8 @@ use Nowo\DoctrineDeadlockRetryBundle\Contract\DeadlockRetryInterface;
 use Nowo\DoctrineDeadlockRetryBundle\Exception\UnknownRetryProfileException;
 use Nowo\DoctrineDeadlockRetryBundle\Failure\TransientFailureClassifier;
 use Nowo\DoctrineDeadlockRetryBundle\Failure\TransientFailureKind;
+use Nowo\DoctrineDeadlockRetryBundle\Sleep\SleeperInterface;
+use Nowo\DoctrineDeadlockRetryBundle\Sleep\UsleepSleeper;
 use PDOException;
 use Psr\Log\LoggerInterface;
 use Random\Randomizer;
@@ -22,7 +24,6 @@ use Throwable;
 use function hrtime;
 use function max;
 use function str_starts_with;
-use function usleep;
 
 /**
  * Executes Doctrine flush (and arbitrary callables) with retries on transient failures: deadlocks (1213, 40P01),
@@ -42,7 +43,9 @@ use function usleep;
  * rollback_on_deadlock disabled nothing is retried on a connection the failure left in a transaction. Retries stop
  * at max_retries or when the profile's max_total_ms budget would be exceeded.
  *
- * Retries wait with exponential backoff and full jitter (see RetryProfile). The service holds no per-request state.
+ * Retries wait with exponential backoff and full jitter (see RetryProfile) through a SleeperInterface (usleep() by
+ * default). A failure counts as transient wherever it sits in the previous chain or inside a Messenger
+ * HandlerFailedException (see TransientFailureClassifier). The service holds no per-request state.
  *
  * @author Héctor Franco Aceituno <hectorfranco@nowo.tech>
  * @copyright 2026 Nowo.tech
@@ -55,12 +58,15 @@ final class DeadlockRetryService implements DeadlockRetryInterface
 
     private readonly Randomizer $randomizer;
 
+    private readonly SleeperInterface $sleeper;
+
     /**
      * @param array<string, RetryProfile> $profiles
      * @param ManagerRegistry|null $managerRegistry Used to reset a closed entity manager; without it a closed manager cannot be recovered
      * @param string|null $entityManagerName Entity manager name in the registry (null = default manager)
      * @param LoggerInterface|null $logger Receives retries and connection repairs (kind, codes and levels only, never SQL)
      * @param Randomizer|null $randomizer Source of the backoff jitter (a secure engine by default)
+     * @param SleeperInterface|null $sleeper Waits between attempts (UsleepSleeper by default)
      */
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
@@ -72,10 +78,12 @@ final class DeadlockRetryService implements DeadlockRetryInterface
         ?TransientFailureClassifier $classifier = null,
         ?ConnectionRepairer $repairer = null,
         ?Randomizer $randomizer = null,
+        ?SleeperInterface $sleeper = null,
     ) {
         $this->classifier = $classifier ?? new TransientFailureClassifier();
         $this->repairer   = $repairer ?? new ConnectionRepairer();
         $this->randomizer = $randomizer ?? new Randomizer();
+        $this->sleeper    = $sleeper ?? new UsleepSleeper();
     }
 
     /**
@@ -206,7 +214,7 @@ final class DeadlockRetryService implements DeadlockRetryInterface
                 ]);
 
                 if ($delay > 0) {
-                    usleep($delay * 1000);
+                    $this->sleeper->sleepMilliseconds($delay);
                 }
             }
         }
@@ -230,13 +238,18 @@ final class DeadlockRetryService implements DeadlockRetryInterface
     {
         $cause = $this->classifier->transientCause($throwable) ?? $throwable;
 
-        for ($current = $throwable; $current instanceof Throwable && $current !== $cause; $current = $current->getPrevious()) {
+        for ($current = $throwable; $current instanceof Throwable; $current = $current->getPrevious()) {
+            if ($current === $cause) {
+                return $cause;
+            }
+
             if (!$current instanceof DriverExceptionInterface && !$current instanceof PDOException && !str_starts_with($current::class, 'Doctrine\\')) {
                 return $throwable;
             }
         }
 
-        return $cause;
+        // Only reachable through a wrapper's wrapped exceptions (HandlerFailedException): keep the wrapper.
+        return $throwable;
     }
 
     /**

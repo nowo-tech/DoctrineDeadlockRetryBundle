@@ -17,12 +17,17 @@ use LogicException;
 use Nowo\DoctrineDeadlockRetryBundle\Config\RetryProfile;
 use Nowo\DoctrineDeadlockRetryBundle\Exception\UnknownRetryProfileException;
 use Nowo\DoctrineDeadlockRetryBundle\Service\DeadlockRetryService;
+use Nowo\DoctrineDeadlockRetryBundle\Tests\Fixtures\Sleep\RecordingSleeper;
+use Nowo\TransactionContract\TransientStorageFailure;
 use PDOException;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 use ReflectionProperty;
 use RuntimeException;
+use stdClass;
+use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\Exception\HandlerFailedException;
 use Throwable;
 
 /**
@@ -132,6 +137,125 @@ final class DeadlockRetryServiceTest extends TestCase
 
         $this->expectException(DeadlockException::class);
         $service->flush();
+    }
+
+    public function testTheInjectedSleeperReceivesEachBackoffDelay(): void
+    {
+        $this->stubOpenManager();
+        $deadlock = $this->createDeadlockException();
+        $sleeper  = new RecordingSleeper();
+        $attempts = 0;
+        $service  = new DeadlockRetryService(
+            $this->entityManager,
+            ['default' => new RetryProfile('default', 3, 10, backoffMaxMs: 25, fullJitter: false)],
+            'default',
+            sleeper: $sleeper,
+        );
+
+        $result = $service->retry(static function () use ($deadlock, &$attempts): string {
+            if (++$attempts < 4) {
+                throw $deadlock;
+            }
+
+            return 'done';
+        });
+
+        self::assertSame('done', $result);
+        self::assertSame([10, 20, 25], $sleeper->delays);
+    }
+
+    public function testTheSleeperSeesTheBackoffFloor(): void
+    {
+        $this->stubOpenManager();
+        $deadlock = $this->createDeadlockException();
+        $sleeper  = new RecordingSleeper();
+        $service  = new DeadlockRetryService(
+            $this->entityManager,
+            ['default' => new RetryProfile('default', 3, 200, backoffMaxMs: 200, retryLockWaitTimeout: true, backoffMinMs: 20)],
+            'default',
+            sleeper: $sleeper,
+        );
+
+        $caught = null;
+
+        try {
+            $service->retry(static function () use ($deadlock): never {
+                throw $deadlock;
+            });
+        } catch (DeadlockException $exception) {
+            $caught = $exception;
+        }
+
+        self::assertSame($deadlock, $caught, 'The deadlock escapes once the retries are exhausted.');
+
+        self::assertCount(3, $sleeper->delays);
+
+        foreach ($sleeper->delays as $delay) {
+            self::assertGreaterThanOrEqual(20, $delay);
+            self::assertLessThanOrEqual(200, $delay);
+        }
+    }
+
+    public function testAZeroDelayDoesNotCallTheSleeper(): void
+    {
+        $this->stubOpenManager();
+        $deadlock = $this->createDeadlockException();
+        $sleeper  = new RecordingSleeper();
+        $attempts = 0;
+
+        (new DeadlockRetryService($this->entityManager, ['default' => new RetryProfile('default', 1, 0)], 'default', sleeper: $sleeper))
+            ->retry(static function () use ($deadlock, &$attempts): void {
+                if (++$attempts === 1) {
+                    throw $deadlock;
+                }
+            });
+
+        self::assertSame(2, $attempts);
+        self::assertSame([], $sleeper->delays);
+    }
+
+    public function testADeadlockInsideAHandlerFailedExceptionIsRetried(): void
+    {
+        $this->stubOpenManager();
+        $failed   = new HandlerFailedException(new Envelope(new stdClass()), ['audit' => new LogicException('audit bug'), 'pay' => $this->createDeadlockException()]);
+        $attempts = 0;
+
+        $result = $this->createService(['default' => new RetryProfile('default', 2, 0)])->retry(static function () use ($failed, &$attempts): int {
+            if (++$attempts < 3) {
+                throw $failed;
+            }
+
+            return $attempts;
+        });
+
+        self::assertSame(3, $result);
+    }
+
+    public function testAnExhaustedHandlerFailedExceptionEscapesAsIs(): void
+    {
+        $this->stubOpenManager();
+        $failed = new HandlerFailedException(new Envelope(new stdClass()), ['audit' => new LogicException('audit bug'), 'pay' => $this->createDeadlockException()]);
+
+        $this->expectExceptionObject($failed);
+
+        $this->createService(['default' => new RetryProfile('default', 1, 0)])->retry(static function () use ($failed): never {
+            throw $failed;
+        });
+    }
+
+    public function testATransientStorageFailureInsideAHandlerFailedExceptionIsRetried(): void
+    {
+        $this->stubOpenManager();
+        $failed   = new HandlerFailedException(new Envelope(new stdClass()), ['a' => new LogicException('bug'), 'b' => TransientStorageFailure::fromPrevious(new RuntimeException('cache down'))]);
+        $attempts = 0;
+
+        $this->createService(['default' => new RetryProfile('default', 1, 0)])->retry(static function () use ($failed, &$attempts): void {
+            if (++$attempts === 1) {
+                throw $failed;
+            }
+        });
+
+        self::assertSame(2, $attempts);
     }
 
     public function testFlushWithUnknownProfileThrows(): void

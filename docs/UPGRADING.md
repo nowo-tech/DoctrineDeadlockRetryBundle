@@ -28,6 +28,23 @@
 
 ## Unreleased
 
+From **3.0.0**, `composer update nowo-tech/doctrine-deadlock-retry-bundle`. No configuration change is required.
+
+- **New profile option `backoff_min_ms`** (default `0`, so delays are unchanged). With full jitter each delay becomes
+  random between it and the exponential bound. A value above `backoff_max_ms` is a configuration error.
+- **`SleeperInterface`**: the service waits through `Sleep\SleeperInterface` (default `UsleepSleeper`). Code that
+  builds `DeadlockRetryService` by hand keeps working: the new `$sleeper` argument is optional and last.
+  `RetryProfile` gains an optional last argument `$backoffMinMs` too.
+- **Messenger**: a deadlock, lock wait timeout or `TransientStorageFailure` inside a `HandlerFailedException` (any
+  wrapped handler exception, not only the first) is now transient. A `retry()` / `TransactionRunnerInterface::run()`
+  around a synchronous bus dispatch now retries it, and `http_mapping` answers 503 instead of 500. When the retries
+  are exhausted the `HandlerFailedException` escapes from `retry()` as is; the adapter wraps it in
+  `TransientStorageFailure`.
+- **`TransientStorageFailure` over a non-storage error** (for example one a cache layer threw) is now transient
+  (kind `Retryable`); 3.0.0 ignored it. A `TransientStorageFailure` over a lock wait timeout still follows
+  `retry_lock_wait_timeout`.
+- Failure chains are walked at most 64 levels deep (and 256 exceptions); 3.0.0 walked `getPrevious()` without a bound.
+
 ## To 3.0.0
 
 From **2.4.0**:

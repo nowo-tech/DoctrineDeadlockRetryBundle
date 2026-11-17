@@ -15,6 +15,7 @@ use Symfony\Component\Config\Definition\ConfigurationInterface;
 use function is_array;
 use function is_int;
 use function is_string;
+use function max;
 
 /**
  * Configuration tree for nowo_doctrine_deadlock_retry: retry profiles, the worker guard and the HTTP mapping.
@@ -89,6 +90,13 @@ final class Configuration implements ConfigurationInterface
                         && $profile['sleep_ms'] !== $profile['backoff_base_ms'])
                     ->thenInvalid('sleep_ms is an alias of backoff_base_ms: set only one of them (or the same value).')
                 ->end()
+                ->validate()
+                    ->ifTrue(static fn (mixed $profile): bool => is_array($profile)
+                        && is_int($profile['backoff_min_ms'] ?? null)
+                        && is_int($profile['backoff_max_ms'] ?? null)
+                        && $profile['backoff_min_ms'] > max($profile['backoff_max_ms'], self::baseOf($profile)))
+                    ->thenInvalid('backoff_min_ms must not exceed backoff_max_ms.')
+                ->end()
                 ->children()
                     ->integerNode('max_retries')
                         ->info('Number of retries after the first failed attempt (3 = up to 4 attempts)')
@@ -110,8 +118,13 @@ final class Configuration implements ConfigurationInterface
                         ->defaultValue(RetryProfile::DEFAULT_BACKOFF_MAX_MS)
                         ->min(0)
                     ->end()
+                    ->integerNode('backoff_min_ms')
+                        ->info('Lower bound of a single delay in milliseconds (at most backoff_max_ms): with full jitter each delay is random between this and the exponential bound; 0 = no floor')
+                        ->defaultValue(0)
+                        ->min(0)
+                    ->end()
                     ->enumNode('jitter')
-                        ->info('full: each delay is random between 0 and the bound (no lockstep retries); none: exactly the bound')
+                        ->info('full: each delay is random between backoff_min_ms (default 0) and the bound (no lockstep retries); none: exactly the bound, never below backoff_min_ms')
                         ->values(['full', 'none'])
                         ->defaultValue('full')
                     ->end()
@@ -136,6 +149,7 @@ final class Configuration implements ConfigurationInterface
                     'backoff_base_ms'         => self::DEFAULT_BACKOFF_BASE_MS,
                     'sleep_ms'                => null,
                     'backoff_max_ms'          => RetryProfile::DEFAULT_BACKOFF_MAX_MS,
+                    'backoff_min_ms'          => 0,
                     'jitter'                  => 'full',
                     'retry_lock_wait_timeout' => false,
                     'max_total_ms'            => null,
@@ -144,6 +158,16 @@ final class Configuration implements ConfigurationInterface
             ]);
 
         return $node;
+    }
+
+    /**
+     * @param array<mixed> $profile
+     */
+    private static function baseOf(array $profile): int
+    {
+        $base = $profile['backoff_base_ms'] ?? $profile['sleep_ms'] ?? self::DEFAULT_BACKOFF_BASE_MS;
+
+        return is_int($base) ? $base : self::DEFAULT_BACKOFF_BASE_MS;
     }
 
     private function workerGuardNode(): ArrayNodeDefinition

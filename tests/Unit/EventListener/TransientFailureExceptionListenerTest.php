@@ -14,12 +14,15 @@ use LogicException;
 use Nowo\DoctrineDeadlockRetryBundle\EventListener\TransientFailureExceptionListener;
 use Nowo\TransactionContract\TransientStorageFailure;
 use PHPUnit\Framework\TestCase;
+use stdClass;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Event\ExceptionEvent;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\HttpKernel\HttpKernelInterface;
 use Symfony\Component\HttpKernel\KernelEvents;
+use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\Exception\HandlerFailedException;
 use Throwable;
 
 /**
@@ -79,6 +82,33 @@ final class TransientFailureExceptionListenerTest extends TestCase
         $mapped = $event->getThrowable();
         self::assertInstanceOf(HttpExceptionInterface::class, $mapped);
         self::assertSame(['Retry-After' => '2'], $mapped->getHeaders(), 'No hint: the configured value.');
+    }
+
+    public function testFailuresInsideAHandlerFailedExceptionAreMapped(): void
+    {
+        $event = $this->event(new HandlerFailedException(new Envelope(new stdClass()), ['a' => new LogicException('bug'), 'b' => $this->deadlock()]));
+        (new TransientFailureExceptionListener(retryAfterSeconds: 2))->onKernelException($event);
+        $mapped = $event->getThrowable();
+        self::assertInstanceOf(HttpExceptionInterface::class, $mapped);
+        self::assertSame(503, $mapped->getStatusCode());
+        self::assertSame(['Retry-After' => '2'], $mapped->getHeaders());
+
+        $event = $this->event(new HandlerFailedException(new Envelope(new stdClass()), ['a' => new LogicException('bug'), 'b' => new TransientStorageFailure(8)]));
+        (new TransientFailureExceptionListener(retryAfterSeconds: 2))->onKernelException($event);
+        $mapped = $event->getThrowable();
+        self::assertInstanceOf(HttpExceptionInterface::class, $mapped);
+        self::assertSame(['Retry-After' => '8'], $mapped->getHeaders(), 'The hint of the wrapped TransientStorageFailure wins.');
+
+        $event = $this->event(new HandlerFailedException(new Envelope(new stdClass()), ['a' => new LogicException('bug'), 'b' => new OptimisticLockException('stale', null)]));
+        (new TransientFailureExceptionListener(conflictExceptions: [OptimisticLockException::class]))->onKernelException($event);
+        $mapped = $event->getThrowable();
+        self::assertInstanceOf(HttpExceptionInterface::class, $mapped);
+        self::assertSame(409, $mapped->getStatusCode());
+
+        $bug   = new HandlerFailedException(new Envelope(new stdClass()), ['a' => new LogicException('bug')]);
+        $event = $this->event($bug);
+        (new TransientFailureExceptionListener())->onKernelException($event);
+        self::assertSame($bug, $event->getThrowable());
     }
 
     public function testConflictBecomes409(): void

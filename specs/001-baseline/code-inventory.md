@@ -39,6 +39,14 @@ Every production artifact under `src/` is listed below. Tests under `tests/` are
 | `Transaction/DeadlockRetryTransactionRunner.php` | Transaction runner adapter (3.0) | FR-TX-001 |
 | `Worker/ConnectionGuard.php` | Worker guard (3.0) | FR-WORKER-001, FR-REPAIR-001 |
 
+## Additions 3.1 (write-unit parity: sleeper port, Messenger-wrapped failures, minimum backoff)
+
+| Source file | Spec section | Requirement IDs |
+| --- | --- | --- |
+| `Failure/ThrowableChain.php` | Failure chain walk (3.1) | FR-CLASS-002 |
+| `Sleep/SleeperInterface.php` | Sleeper port (3.1) | FR-SLEEP-001 |
+| `Sleep/UsleepSleeper.php` | Sleeper port (3.1) | FR-SLEEP-001 |
+
 ## Coverage summary
 
 | Category | Files | Mapped |
@@ -46,4 +54,5 @@ Every production artifact under `src/` is listed below. Tests under `tests/` are
 | PHP classes | 6 | 6 |
 | YAML config | 1 | 1 |
 | Additions 3.0 | 11 | 11 |
-| **Total production sources** | **18** | **18** |
+| Additions 3.1 | 3 | 3 |
+| **Total production sources** | **21** | **21** |

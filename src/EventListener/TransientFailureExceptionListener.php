@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nowo\DoctrineDeadlockRetryBundle\EventListener;
 
 use Doctrine\DBAL\Driver\Exception as DriverExceptionInterface;
+use Nowo\DoctrineDeadlockRetryBundle\Failure\ThrowableChain;
 use Nowo\DoctrineDeadlockRetryBundle\Failure\TransientFailureClassifier;
 use Nowo\TransactionContract\TransientStorageFailure;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
@@ -29,6 +30,8 @@ use function str_starts_with;
  * Transient: whatever TransientFailureClassifier recognises (deadlock, lock wait timeout, serialization failure, the
  * ORM's 1305 that carries a nested deadlock, any DBAL RetryableException) and the framework-free
  * Nowo\TransactionContract\TransientStorageFailure, whose retryAfterSeconds() hint wins over the configured value.
+ * Both are found anywhere in the previous chain or inside a Messenger HandlerFailedException (see ThrowableChain), and
+ * so are the conflict classes.
  *
  * Format "exception" (default) replaces the throwable with a Symfony HttpException carrying the status and headers,
  * so the host's own error rendering (problem+json included) produces the response. Format "problem_json" sets an
@@ -60,7 +63,7 @@ final class TransientFailureExceptionListener implements EventSubscriberInterfac
      * @param int $retryAfterSeconds Retry-After value of a 503
      * @param list<string> $pathPrefixes Request path prefixes handled (with $routePrefixes empty too: every request)
      * @param list<string> $routePrefixes Route name prefixes handled
-     * @param list<string> $conflictExceptions Exception classes (or interfaces) mapped to 409, searched along the previous chain
+     * @param list<string> $conflictExceptions Exception classes (or interfaces) mapped to 409, searched along the previous chain and wrapped exceptions
      * @param string $format FORMAT_EXCEPTION or FORMAT_PROBLEM_JSON
      */
     public function __construct(
@@ -156,10 +159,10 @@ final class TransientFailureExceptionListener implements EventSubscriberInterfac
      */
     private function retryAfter(Throwable $throwable): ?int
     {
-        for ($current = $throwable; $current instanceof Throwable; $current = $current->getPrevious()) {
-            if ($current instanceof TransientStorageFailure) {
-                return $current->retryAfterSeconds() ?? $this->retryAfterSeconds;
-            }
+        $storageFailure = $this->classifier->storageFailure($throwable);
+
+        if ($storageFailure instanceof TransientStorageFailure) {
+            return $storageFailure->retryAfterSeconds() ?? $this->retryAfterSeconds;
         }
 
         return $this->classifier->isTransient($throwable) ? $this->retryAfterSeconds : null;
@@ -172,7 +175,7 @@ final class TransientFailureExceptionListener implements EventSubscriberInterfac
      */
     private function isConflict(Throwable $throwable): bool
     {
-        for ($current = $throwable; $current instanceof Throwable; $current = $current->getPrevious()) {
+        foreach (ThrowableChain::flatten($throwable) as $current) {
             foreach ($this->conflictExceptions as $class) {
                 if ($current instanceof $class) {
                     return $current instanceof DriverExceptionInterface || !$this->wrapsDriverException($current);
@@ -185,8 +188,8 @@ final class TransientFailureExceptionListener implements EventSubscriberInterfac
 
     private function wrapsDriverException(Throwable $throwable): bool
     {
-        for ($current = $throwable->getPrevious(); $current instanceof Throwable; $current = $current->getPrevious()) {
-            if ($current instanceof DriverExceptionInterface) {
+        foreach (ThrowableChain::flatten($throwable) as $current) {
+            if ($current !== $throwable && $current instanceof DriverExceptionInterface) {
                 return true;
             }
         }

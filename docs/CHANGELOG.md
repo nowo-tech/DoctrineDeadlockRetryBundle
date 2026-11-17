@@ -32,6 +32,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Injectable sleeper**: `Sleep\SleeperInterface::sleepMilliseconds(int)` with the default `Sleep\UsleepSleeper`,
+  aliased in the container and passed to `DeadlockRetryService` as a new optional last constructor argument. Hosts
+  alias the interface to replace how the service waits (a recording sleeper in tests). Chosen over
+  `symfony/clock`'s `ClockInterface::sleep()` so the bundle needs no new runtime dependency and the port stays in
+  the profile's integer milliseconds; a clock-backed implementation is a few lines.
+- **Messenger-wrapped failures**: the classifier, the retry decision, the `TransactionRunnerInterface` adapter and
+  `http_mapping` (503 and 409) walk `HandlerFailedException::getWrappedExceptions()` (any Messenger
+  `WrappedExceptionsInterface`) as well as `getPrevious()`, recursively, through `Failure\ThrowableChain` (each
+  exception once, at most 64 levels and 256 exceptions; only when `symfony/messenger` is installed). A
+  `TransientStorageFailure` anywhere in the chain is transient; the adapter keeps its `Retry-After` hint.
+  `TransientFailureClassifier::storageFailure()` returns it.
+- **Minimum backoff**: profile option `backoff_min_ms` (default `0`, unchanged behaviour). With full jitter each delay
+  is random between it and the exponential bound; it must not exceed `backoff_max_ms`. `RetryProfile` gains the
+  optional argument `$backoffMinMs`. See [CONFIGURATION](CONFIGURATION.md) for a 3-retry, 20–200 ms full-jitter
+  profile on 1213 and 1205.
+
+### Changed
+
+- A `TransientStorageFailure` whose previous error is not a recognised storage error is now transient (`Retryable`)
+  instead of ignored.
+- Failure chains are walked at most 64 levels deep; 3.0.0 followed `getPrevious()` without a bound.
+
 ### Fixed
 
 - `rector.php` targets PHP 8.2, the `require.php` floor (REQ-CS-003).

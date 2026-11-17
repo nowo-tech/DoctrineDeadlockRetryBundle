@@ -56,6 +56,7 @@ A worker demo exists: `demo/symfony8/docker/frankenphp/Caddyfile` (and `demo/sym
 | `Nowo\DoctrineDeadlockRetryBundle\Service\DeadlockRetryService` | yes (private, autowirable) | none (`readonly` EntityManager, optional `ManagerRegistry` and manager name, profile map, default name) | ✅ | ✅ |
 | `nowo_doctrine_deadlock_retry.profile.<name>` (`Config\RetryProfile`) | yes (private) | none (`final readonly`) | ✅ | ✅ |
 | `Failure\TransientFailureClassifier`, `Connection\ConnectionRepairer` | yes (private) | none (no properties) | ✅ | ✅ |
+| `Sleep\UsleepSleeper` (alias `Sleep\SleeperInterface`) | yes (private) | none (no properties); a host replacement must stay stateless | ✅ | ✅ |
 | `Worker\ConnectionGuard` + `EventListener\WorkerGuardSubscriber` / `MessengerWorkerGuardSubscriber` (opt-in `worker_guard`) | yes (private) | none (`readonly` registry, container, logger, connection list, flags) | ✅ | ✅ |
 | `EventListener\TransientFailureExceptionListener` (opt-in `http_mapping`) | yes (private) | none (`readonly` configuration and classifier) | ✅ | ✅ |
 
