@@ -41,7 +41,7 @@ final readonly class RetryProfile
      * @param int|null $maxTotalMs Time budget of the whole call in milliseconds: no retry starts once the elapsed time plus the next delay would exceed it (null = no budget)
      * @param int $backoffMinMs Lower bound of a single delay in milliseconds (0 = none); at most backoffMaxMs
      *
-     * @throws InvalidArgumentException When backoffMinMs is negative or above the effective backoffMaxMs
+     * @throws InvalidArgumentException When backoffMinMs is negative, above the effective backoffMaxMs or above maxTotalMs (no retry could ever start)
      */
     public function __construct(
         public string $name,
@@ -58,6 +58,10 @@ final readonly class RetryProfile
 
         if ($backoffMinMs < 0 || $backoffMinMs > $this->backoffMaxMs) {
             throw new InvalidArgumentException(sprintf('Retry profile "%s": backoff_min_ms (%d) must be between 0 and backoff_max_ms (%d).', $name, $backoffMinMs, $this->backoffMaxMs));
+        }
+
+        if ($maxTotalMs !== null && $maxTotalMs < $backoffMinMs) {
+            throw new InvalidArgumentException(sprintf('Retry profile "%s": max_total_ms (%d) must not be below backoff_min_ms (%d), or no retry could start.', $name, $maxTotalMs, $backoffMinMs));
         }
     }
 

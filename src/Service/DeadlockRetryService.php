@@ -44,8 +44,8 @@ use function str_starts_with;
  * at max_retries or when the profile's max_total_ms budget would be exceeded.
  *
  * Retries wait with exponential backoff and full jitter (see RetryProfile) through a SleeperInterface (usleep() by
- * default). A failure counts as transient wherever it sits in the previous chain or inside a Messenger
- * HandlerFailedException (see TransientFailureClassifier). The service holds no per-request state.
+ * default). Transient failures are recognised along the previous chain and inside a Messenger HandlerFailedException
+ * whose handlers all failed transiently (see TransientFailureClassifier). The service holds no per-request state.
  *
  * @author Héctor Franco Aceituno <hectorfranco@nowo.tech>
  * @copyright 2026 Nowo.tech

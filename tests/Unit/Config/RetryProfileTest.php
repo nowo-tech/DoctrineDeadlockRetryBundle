@@ -114,6 +114,16 @@ final class RetryProfileTest extends TestCase
         new RetryProfile('p', 3, 50, backoffMaxMs: 200, backoffMinMs: 201);
     }
 
+    public function testABudgetBelowTheFloorIsRejected(): void
+    {
+        self::assertSame(20, (new RetryProfile('p', 3, 50, backoffMaxMs: 200, maxTotalMs: 20, backoffMinMs: 20))->maxTotalMs);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('max_total_ms (19) must not be below backoff_min_ms (20)');
+
+        new RetryProfile('p', 3, 50, backoffMaxMs: 200, maxTotalMs: 19, backoffMinMs: 20);
+    }
+
     public function testNegativeFloorIsRejected(): void
     {
         $this->expectException(InvalidArgumentException::class);

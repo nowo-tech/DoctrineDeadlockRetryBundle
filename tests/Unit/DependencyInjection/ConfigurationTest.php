@@ -75,6 +75,16 @@ final class ConfigurationTest extends TestCase
         $this->processConfiguration([['profiles' => ['p' => ['backoff_max_ms' => 200, 'backoff_min_ms' => 201]]]]);
     }
 
+    public function testABudgetBelowTheBackoffMinIsRejected(): void
+    {
+        $config = $this->processConfiguration([['profiles' => ['p' => ['backoff_min_ms' => 20, 'max_total_ms' => 20]]]]);
+        $this->assertSame(20, $config['profiles']['p']['max_total_ms']);
+
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('max_total_ms must not be below backoff_min_ms');
+        $this->processConfiguration([['profiles' => ['p' => ['backoff_min_ms' => 20, 'max_total_ms' => 19]]]]);
+    }
+
     public function testNegativeBackoffMinIsRejected(): void
     {
         $this->expectException(InvalidConfigurationException::class);

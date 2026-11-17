@@ -22,7 +22,9 @@ use ReflectionProperty;
 use RuntimeException;
 use stdClass;
 use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\Exception\DelayedMessageHandlingException;
 use Symfony\Component\Messenger\Exception\HandlerFailedException;
+use Symfony\Component\Messenger\Stamp\HandledStamp;
 use Throwable;
 
 /**
@@ -51,14 +53,22 @@ final class TransientFailureClassifierTest extends TestCase
         yield 'other RetryableException' => [new class('retry') extends Exception implements RetryableException {}, TransientFailureKind::Retryable];
         yield 'TransientStorageFailure without a storage error' => [new TransientStorageFailure(), TransientFailureKind::Retryable];
         yield 'TransientStorageFailure over a lock wait' => [TransientStorageFailure::fromPrevious(new LockWaitTimeoutException(self::driver(1205, 'HY000'), null)), TransientFailureKind::LockWaitTimeout];
-        yield 'TransientStorageFailure over a non-storage error' => [TransientStorageFailure::fromPrevious(new RuntimeException('other')), TransientFailureKind::Retryable];
+        yield 'TransientStorageFailure over a non-storage error (work may be committed)' => [TransientStorageFailure::fromPrevious(new RuntimeException('cache backend down')), null];
         yield 'TransientStorageFailure wrapped by the application' => [new LogicException('wrapper', 0, new TransientStorageFailure(5)), TransientFailureKind::Retryable];
+        yield 'TransientStorageFailure over an application wrapper of a deadlock' => [TransientStorageFailure::fromPrevious(new LogicException('wrapper', 0, new DeadlockException(self::driver(1213, '40001'), null))), TransientFailureKind::Deadlock];
         yield 'HandlerFailedException over a deadlock' => [self::handlerFailed(['h' => new DeadlockException(self::driver(1213, '40001'), null)]), TransientFailureKind::Deadlock];
-        yield 'HandlerFailedException, deadlock in the second handler only' => [self::handlerFailed(['a' => new LogicException('bug'), 'b' => new DeadlockException(self::driver(1213, '40001'), null)]), TransientFailureKind::Deadlock];
-        yield 'HandlerFailedException nested in a HandlerFailedException' => [self::handlerFailed(['a' => new LogicException('bug'), 'b' => self::handlerFailed(['c' => new RuntimeException('x'), 'd' => new LockWaitTimeoutException(self::driver(1205, 'HY000'), null)])]), TransientFailureKind::LockWaitTimeout];
-        yield 'HandlerFailedException over a TransientStorageFailure' => [self::handlerFailed(['a' => new LogicException('bug'), 'b' => new TransientStorageFailure(4)]), TransientFailureKind::Retryable];
+        yield 'HandlerFailedException, a domain error next to a deadlock' => [self::handlerFailed(['a' => new LogicException('bug'), 'b' => new DeadlockException(self::driver(1213, '40001'), null)]), null];
+        yield 'HandlerFailedException, a deadlock next to a domain error' => [self::handlerFailed(['a' => new DeadlockException(self::driver(1213, '40001'), null), 'b' => new LogicException('bug')]), null];
+        yield 'HandlerFailedException, two transient handlers' => [self::handlerFailed(['a' => new DeadlockException(self::driver(1213, '40001'), null), 'b' => new TransientStorageFailure()]), TransientFailureKind::Deadlock];
+        yield 'HandlerFailedException nested, every leaf transient' => [self::handlerFailed(['a' => new TransientStorageFailure(), 'b' => self::handlerFailed(['c' => new LockWaitTimeoutException(self::driver(1205, 'HY000'), null)])]), TransientFailureKind::Retryable];
+        yield 'HandlerFailedException nested, one leaf not transient' => [self::handlerFailed(['a' => new TransientStorageFailure(), 'b' => self::handlerFailed(['c' => new RuntimeException('x'), 'd' => new LockWaitTimeoutException(self::driver(1205, 'HY000'), null)])]), null];
+        yield 'HandlerFailedException over a TransientStorageFailure' => [self::handlerFailed(['b' => new TransientStorageFailure(4)]), TransientFailureKind::Retryable];
+        yield 'HandlerFailedException over a TransientStorageFailure over a cache error' => [self::handlerFailed(['b' => TransientStorageFailure::fromPrevious(new RuntimeException('cache'))]), null];
         yield 'HandlerFailedException over a TransientStorageFailure over a lock wait' => [self::handlerFailed(['a' => TransientStorageFailure::fromPrevious(new LockWaitTimeoutException(self::driver(1205, 'HY000'), null))]), TransientFailureKind::LockWaitTimeout];
         yield 'HandlerFailedException over application errors only' => [self::handlerFailed(['a' => new LogicException('bug'), 'b' => new RuntimeException('not a deadlock', 1213)]), null];
+        yield 'HandlerFailedException after another handler completed (HandledStamp)' => [new HandlerFailedException(new Envelope(new stdClass(), [new HandledStamp('ok', 'notify')]), ['pay' => new DeadlockException(self::driver(1213, '40001'), null)]), null];
+        yield 'DelayedMessageHandlingException over a deadlock' => [new DelayedMessageHandlingException([new DeadlockException(self::driver(1213, '40001'), null)]), null];
+        yield 'application wrapper of a DelayedMessageHandlingException over a deadlock' => [new LogicException('wrapper', 0, new DelayedMessageHandlingException([new DeadlockException(self::driver(1213, '40001'), null)])), null];
         yield 'application code 1213' => [new RuntimeException('not a deadlock', 1213), null];
         yield 'wrapped deadlock' => [new RuntimeException('wrapper', 0, new DeadlockException(self::driver(1213, '40001'), null)), TransientFailureKind::Deadlock];
         yield 'constraint violation' => [new DriverException(self::driver(1062, '23000'), null), null];
@@ -88,16 +98,19 @@ final class TransientFailureClassifierTest extends TestCase
         self::assertNull($classifier->transientCause(new RuntimeException('bug')));
     }
 
-    public function testTransientCauseAndStorageFailureInsideAHandlerFailedException(): void
+    public function testTheStrongestKindWinsWhateverTheOrder(): void
     {
+        $lockWait   = new LockWaitTimeoutException(self::driver(1205, 'HY000'), null);
         $deadlock   = new DeadlockException(self::driver(1213, '40001'), null);
+        $serial     = new DeadlockException(self::driver(7, '40001'), null);
         $storage    = new TransientStorageFailure(6);
-        $failed     = self::handlerFailed(['a' => new LogicException('bug'), 'b' => $storage, 'c' => $deadlock]);
         $classifier = new TransientFailureClassifier();
 
-        self::assertSame($deadlock, $classifier->transientCause($failed), 'A classified storage error wins over a bare TransientStorageFailure.');
-        self::assertSame($storage, $classifier->storageFailure($failed));
-        self::assertSame($storage, $classifier->transientCause(self::handlerFailed(['a' => new LogicException('bug'), 'b' => $storage])));
+        self::assertSame($deadlock, $classifier->transientCause(self::handlerFailed(['a' => $lockWait, 'b' => $storage, 'c' => $deadlock])));
+        self::assertSame($deadlock, $classifier->transientCause(self::handlerFailed(['c' => $deadlock, 'a' => $lockWait])));
+        self::assertSame(TransientFailureKind::SerializationFailure, $classifier->classify(self::handlerFailed(['a' => $lockWait, 'b' => $serial])));
+        self::assertSame(TransientFailureKind::Retryable, $classifier->classify(self::handlerFailed(['a' => $lockWait, 'b' => $storage])));
+        self::assertSame($storage, $classifier->storageFailure(self::handlerFailed(['a' => $lockWait, 'b' => $storage])));
         self::assertNull($classifier->storageFailure($deadlock));
     }
 
@@ -114,18 +127,12 @@ final class TransientFailureClassifierTest extends TestCase
         self::assertFalse($classifier->isTransient(new RuntimeException('one more', 0, $current)), 'Beyond the bound: not walked.');
     }
 
-    public function testADeadlockOnASharedBranchIsFoundThroughItsShortestPath(): void
+    public function testTheSameExceptionInTwoHandlersIsFoundInBoth(): void
     {
         $deadlock = new DeadlockException(self::driver(1213, '40001'), null);
         $shared   = new RuntimeException('shared', 0, $deadlock);
-        $long     = $shared;
 
-        for ($i = 0; $i < ThrowableChain::MAX_DEPTH - 1; ++$i) {
-            $long = new RuntimeException('wrapper', 0, $long);
-        }
-
-        $classifier = new TransientFailureClassifier();
-        self::assertSame($deadlock, $classifier->transientCause(self::handlerFailed(['long' => $long, 'short' => $shared])));
+        self::assertSame($deadlock, (new TransientFailureClassifier())->transientCause(self::handlerFailed(['a' => $shared, 'b' => $shared])));
     }
 
     /**

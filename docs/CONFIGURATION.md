@@ -119,8 +119,30 @@ random in [20, 50], [20, 100] and [20, 200] ms.
 
 The transient classifier, the retry decision, the `TransactionRunnerInterface` adapter and `http_mapping` look for a
 transient failure along `getPrevious()` **and** inside the exceptions a Messenger `HandlerFailedException` wraps
-(`getWrappedExceptions()`), recursively; a `TransientStorageFailure` anywhere in that chain counts as transient. The
-walk stops 64 levels deep and after 256 exceptions. Without `symfony/messenger` only `getPrevious()` is walked.
+(`getWrappedExceptions()`), recursively (at most 64 levels deep and 256 exceptions; without `symfony/messenger` only
+`getPrevious()` is walked):
+
+- A `HandlerFailedException` is transient only when **every** wrapped exception is transient **and** its envelope
+  carries no `HandledStamp` (no other handler completed in that attempt). Its kind is the strongest one: deadlock or
+  serialization failure, then a plain retryable failure, then lock wait timeout, whatever the handler order.
+- A `DelayedMessageHandlingException` (handlers that ran after the outer dispatch completed) is never transient.
+- A `TransientStorageFailure` without a previous error is retryable; one over a recognised storage error is classified
+  by that error; one over anything else (a cache or HTTP error, after which the work may already be committed) is not
+  retried. `http_mapping` answers 503 for any `TransientStorageFailure` in the chain, with its `Retry-After` hint.
+- `http_mapping` answers 409 for a `HandlerFailedException` only when every wrapped exception is a conflict; a domain
+  error next to a deadlock or a conflict stays a 500.
+
+Even then, a dispatch is safe to replay only when the whole dispatch runs in **one transaction** (inside
+`TransactionRunnerInterface::run()`), **every handler writes through the shared, transaction-bound entity manager or
+connection**, and **side effects** (mail, HTTP calls, events to other systems) are deferred until after the commit. A handler that writes through raw DBAL on another connection, or calls another system, is
+replayed with its effect already applied.
+
+Mind the **ghost transaction**: after a deadlock the database has already rolled the transaction back, while DBAL
+still counts it as open until the bundle repairs the connection. A handler that runs after the deadlocked one, in the
+same dispatch, and writes through raw DBAL (or through another connection) is executed **outside any transaction and
+auto-committed**; such a dispatch is never replayed (its `HandledStamp` stops it), but that write stays even though
+the rest of the unit of work was rolled back. When a host replays a message itself, it must dispatch the original
+envelope again, not the failed one.
 
 ### Sleeper (`SleeperInterface`)
 

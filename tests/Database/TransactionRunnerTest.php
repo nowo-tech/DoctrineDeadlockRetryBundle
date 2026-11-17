@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Nowo\DoctrineDeadlockRetryBundle\Tests\Database;
 
 use Doctrine\ORM\EntityManagerInterface;
-use LogicException;
 use Nowo\DoctrineDeadlockRetryBundle\Config\RetryProfile;
 use Nowo\DoctrineDeadlockRetryBundle\Failure\TransientFailureClassifier;
 use Nowo\DoctrineDeadlockRetryBundle\Service\DeadlockRetryService;
@@ -109,7 +108,7 @@ final class TransactionRunnerTest extends DatabaseTestCase
             try {
                 $this->deadlockingWork($service->getEntityManager(), $attempts === 1);
             } catch (Throwable $handlerFailure) {
-                throw new HandlerFailedException(new Envelope(new stdClass()), ['audit' => new LogicException('audit handler'), 'pay' => $handlerFailure]);
+                throw new HandlerFailedException(new Envelope(new stdClass()), ['pay' => $handlerFailure]);
             }
 
             return 'paid';

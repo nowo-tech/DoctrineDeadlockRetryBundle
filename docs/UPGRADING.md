@@ -31,18 +31,20 @@
 From **3.0.0**, `composer update nowo-tech/doctrine-deadlock-retry-bundle`. No configuration change is required.
 
 - **New profile option `backoff_min_ms`** (default `0`, so delays are unchanged). With full jitter each delay becomes
-  random between it and the exponential bound. A value above `backoff_max_ms` is a configuration error.
+  random between it and the exponential bound. A value above `backoff_max_ms`, or a `max_total_ms` below it, is a
+  configuration error.
 - **`SleeperInterface`**: the service waits through `Sleep\SleeperInterface` (default `UsleepSleeper`). Code that
   builds `DeadlockRetryService` by hand keeps working: the new `$sleeper` argument is optional and last.
   `RetryProfile` gains an optional last argument `$backoffMinMs` too.
-- **Messenger**: a deadlock, lock wait timeout or `TransientStorageFailure` inside a `HandlerFailedException` (any
-  wrapped handler exception, not only the first) is now transient. A `retry()` / `TransactionRunnerInterface::run()`
-  around a synchronous bus dispatch now retries it, and `http_mapping` answers 503 instead of 500. When the retries
-  are exhausted the `HandlerFailedException` escapes from `retry()` as is; the adapter wraps it in
-  `TransientStorageFailure`.
-- **`TransientStorageFailure` over a non-storage error** (for example one a cache layer threw) is now transient
-  (kind `Retryable`); 3.0.0 ignored it. A `TransientStorageFailure` over a lock wait timeout still follows
-  `retry_lock_wait_timeout`.
+- **Messenger**: a `HandlerFailedException` is transient only when every wrapped exception is transient and no other
+  handler completed in that attempt (no `HandledStamp`). 3.0.0 looked at the first wrapped exception only, so a
+  deadlock in the first handler replayed handlers that had already succeeded, and a deadlock in a later one was not
+  retried. Now a dispatch with one failing handler (or only transient failures, nothing completed) is retried; a
+  domain error next to a deadlock is neither retried nor mapped to 503 (it stays a 500), and 409 needs every wrapped
+  exception to be a conflict. A `DelayedMessageHandlingException` is never retried. When the retries are exhausted
+  the `HandlerFailedException` escapes from `retry()` as is; the adapter wraps it in `TransientStorageFailure`.
+  Replaying a dispatch is only safe under conditions listed in
+  [CONFIGURATION](CONFIGURATION.md#failures-wrapped-by-messenger): check your handlers before relying on it.
 - Failure chains are walked at most 64 levels deep (and 256 exceptions); 3.0.0 walked `getPrevious()` without a bound.
 
 ## To 3.0.0

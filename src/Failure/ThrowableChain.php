@@ -9,6 +9,8 @@ use Throwable;
 
 use function array_pop;
 use function array_reverse;
+use function array_slice;
+use function array_values;
 use function count;
 use function interface_exists;
 use function spl_object_id;
@@ -71,7 +73,7 @@ final class ThrowableChain
                 continue;
             }
 
-            foreach (array_reverse(self::children($current)) as $child) {
+            foreach (array_reverse(self::children($current, self::MAX_NODES - count($result))) as $child) {
                 $stack[] = [$child, $depth + 1];
             }
         }
@@ -80,23 +82,116 @@ final class ThrowableChain
     }
 
     /**
-     * @return list<Throwable>
+     * Looks for a hit along the previous chain, where a wrapper (HandlerFailedException) only yields a hit when EVERY
+     * exception it wraps yields one: a hit in one handler next to a plain failure in another is no hit.
+     *
+     * $test returns, for one throwable, a hit (stop, found), false (stop, nothing found) or null (go on with what it
+     * carries). A wrapper whose $acceptWrapper returns false yields nothing; $pick chooses among the hits of the
+     * wrapped exceptions (the first one by default). Same bounds as flatten(): MAX_DEPTH levels, MAX_NODES throwables
+     * tested, and a throwable that is its own ancestor yields nothing.
+     *
+     * @param callable(Throwable): (false|Throwable|null) $test
+     * @param (callable(Throwable): bool)|null $acceptWrapper
+     * @param (callable(non-empty-list<Throwable>): Throwable)|null $pick
      */
-    private static function children(Throwable $throwable): array
+    public static function resolve(Throwable $throwable, callable $test, ?callable $acceptWrapper = null, ?callable $pick = null): ?Throwable
     {
-        $children = [];
-        $previous = $throwable->getPrevious();
+        $budget = self::MAX_NODES;
 
-        if ($previous instanceof Throwable) {
-            $children[] = $previous;
+        return self::resolveFrom($throwable, 0, $test, $acceptWrapper, $pick, $budget, []);
+    }
+
+    /**
+     * @param callable(Throwable): (false|Throwable|null) $test
+     * @param (callable(Throwable): bool)|null $acceptWrapper
+     * @param (callable(non-empty-list<Throwable>): Throwable)|null $pick
+     * @param array<int, true> $ancestors
+     */
+    private static function resolveFrom(Throwable $throwable, int $depth, callable $test, ?callable $acceptWrapper, ?callable $pick, int &$budget, array $ancestors): ?Throwable
+    {
+        for ($current = $throwable; $current instanceof Throwable; $current = $current->getPrevious(), ++$depth) {
+            $id = spl_object_id($current);
+
+            if ($depth > self::MAX_DEPTH || $budget <= 0 || isset($ancestors[$id])) {
+                return null;
+            }
+
+            --$budget;
+            $ancestors[$id] = true;
+            $verdict        = $test($current);
+
+            if ($verdict instanceof Throwable) {
+                return $verdict;
+            }
+
+            if ($verdict === false) {
+                return null;
+            }
+
+            $wrapped = self::wrapped($current);
+
+            if ($wrapped === []) {
+                continue;
+            }
+
+            // Every wrapped exception must be inspected: beyond the budget nothing can be proven.
+            if (count($wrapped) > $budget || ($acceptWrapper !== null && !$acceptWrapper($current))) {
+                return null;
+            }
+
+            $hits = [];
+
+            foreach ($wrapped as $exception) {
+                $hit = self::resolveFrom($exception, $depth + 1, $test, $acceptWrapper, $pick, $budget, $ancestors);
+
+                if (!$hit instanceof Throwable) {
+                    return null;
+                }
+
+                $hits[] = $hit;
+            }
+
+            return $pick !== null ? $pick($hits) : $hits[0];
         }
 
-        if (interface_exists(WrappedExceptionsInterface::class) && $throwable instanceof WrappedExceptionsInterface) {
-            foreach ($throwable->getWrappedExceptions() as $wrapped) {
+        return null;
+    }
+
+    /**
+     * @param int $limit Most children returned (the remaining node budget)
+     *
+     * @return list<Throwable>
+     */
+    private static function children(Throwable $throwable, int $limit): array
+    {
+        if ($limit <= 0) {
+            return [];
+        }
+
+        $previous = $throwable->getPrevious();
+        $children = $previous instanceof Throwable ? [$previous] : [];
+
+        // HandlerFailedException's previous is also its first wrapped exception: take it once.
+        foreach (self::wrapped($throwable, $limit + 1) as $wrapped) {
+            if ($wrapped !== $previous) {
                 $children[] = $wrapped;
             }
         }
 
-        return $children;
+        return array_slice($children, 0, $limit);
+    }
+
+    /**
+     * @return list<Throwable> The exceptions a Messenger wrapper holds (empty for any other throwable)
+     */
+    private static function wrapped(Throwable $throwable, ?int $limit = null): array
+    {
+        if (!interface_exists(WrappedExceptionsInterface::class) || !$throwable instanceof WrappedExceptionsInterface) {
+            return [];
+        }
+
+        $wrapped = array_values($throwable->getWrappedExceptions());
+
+        return $limit === null ? $wrapped : array_slice($wrapped, 0, $limit);
     }
 }

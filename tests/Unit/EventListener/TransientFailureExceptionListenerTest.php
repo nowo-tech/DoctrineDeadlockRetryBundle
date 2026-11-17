@@ -86,7 +86,7 @@ final class TransientFailureExceptionListenerTest extends TestCase
 
     public function testFailuresInsideAHandlerFailedExceptionAreMapped(): void
     {
-        $event = $this->event(new HandlerFailedException(new Envelope(new stdClass()), ['a' => new LogicException('bug'), 'b' => $this->deadlock()]));
+        $event = $this->event(new HandlerFailedException(new Envelope(new stdClass()), ['b' => $this->deadlock()]));
         (new TransientFailureExceptionListener(retryAfterSeconds: 2))->onKernelException($event);
         $mapped = $event->getThrowable();
         self::assertInstanceOf(HttpExceptionInterface::class, $mapped);
@@ -97,18 +97,29 @@ final class TransientFailureExceptionListenerTest extends TestCase
         (new TransientFailureExceptionListener(retryAfterSeconds: 2))->onKernelException($event);
         $mapped = $event->getThrowable();
         self::assertInstanceOf(HttpExceptionInterface::class, $mapped);
-        self::assertSame(['Retry-After' => '8'], $mapped->getHeaders(), 'The hint of the wrapped TransientStorageFailure wins.');
+        self::assertSame(['Retry-After' => '8'], $mapped->getHeaders(), 'Any TransientStorageFailure answers 503 with its hint, as in 3.0.');
 
-        $event = $this->event(new HandlerFailedException(new Envelope(new stdClass()), ['a' => new LogicException('bug'), 'b' => new OptimisticLockException('stale', null)]));
-        (new TransientFailureExceptionListener(conflictExceptions: [OptimisticLockException::class]))->onKernelException($event);
+        $event = $this->event(new HandlerFailedException(new Envelope(new stdClass()), ['a' => new OptimisticLockException('stale', null), 'b' => new UniqueConstraintViolationException($this->driverError(1062, '23000'), null)]));
+        (new TransientFailureExceptionListener(conflictExceptions: [OptimisticLockException::class, UniqueConstraintViolationException::class]))->onKernelException($event);
         $mapped = $event->getThrowable();
         self::assertInstanceOf(HttpExceptionInterface::class, $mapped);
-        self::assertSame(409, $mapped->getStatusCode());
+        self::assertSame(409, $mapped->getStatusCode(), 'Every wrapped exception is a conflict.');
 
         $bug   = new HandlerFailedException(new Envelope(new stdClass()), ['a' => new LogicException('bug')]);
         $event = $this->event($bug);
         (new TransientFailureExceptionListener())->onKernelException($event);
         self::assertSame($bug, $event->getThrowable());
+    }
+
+    public function testADomainErrorNextToADeadlockOrAConflictStaysA500(): void
+    {
+        foreach ([['audit' => new LogicException('bug'), 'pay' => $this->deadlock()], ['pay' => $this->deadlock(), 'audit' => new LogicException('bug')], ['a' => new OptimisticLockException('stale', null), 'b' => new LogicException('bug')]] as $exceptions) {
+            $failed = new HandlerFailedException(new Envelope(new stdClass()), $exceptions);
+            $event  = $this->event($failed);
+            (new TransientFailureExceptionListener(conflictExceptions: [OptimisticLockException::class]))->onKernelException($event);
+            self::assertSame($failed, $event->getThrowable(), 'Left to the host: a 500.');
+            self::assertNull($event->getResponse());
+        }
     }
 
     public function testConflictBecomes409(): void
@@ -216,6 +227,21 @@ final class TransientFailureExceptionListenerTest extends TestCase
         }
 
         return new ExceptionEvent($this->createMock(HttpKernelInterface::class), $request, HttpKernelInterface::MAIN_REQUEST, $throwable);
+    }
+
+    private function driverError(int $code, string $sqlState): DriverExceptionInterface
+    {
+        return new class('driver error', $code, $sqlState) extends Exception implements DriverExceptionInterface {
+            public function __construct(string $message, int $code, private readonly string $sqlState)
+            {
+                parent::__construct($message, $code);
+            }
+
+            public function getSQLState(): string
+            {
+                return $this->sqlState;
+            }
+        };
     }
 
     private function deadlock(): DeadlockException

@@ -20,6 +20,7 @@ use Nowo\DoctrineDeadlockRetryBundle\Service\DeadlockRetryService;
 use Nowo\DoctrineDeadlockRetryBundle\Tests\Fixtures\Sleep\RecordingSleeper;
 use Nowo\TransactionContract\TransientStorageFailure;
 use PDOException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
@@ -27,7 +28,9 @@ use ReflectionProperty;
 use RuntimeException;
 use stdClass;
 use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\Exception\DelayedMessageHandlingException;
 use Symfony\Component\Messenger\Exception\HandlerFailedException;
+use Symfony\Component\Messenger\Stamp\HandledStamp;
 use Throwable;
 
 /**
@@ -217,7 +220,7 @@ final class DeadlockRetryServiceTest extends TestCase
     public function testADeadlockInsideAHandlerFailedExceptionIsRetried(): void
     {
         $this->stubOpenManager();
-        $failed   = new HandlerFailedException(new Envelope(new stdClass()), ['audit' => new LogicException('audit bug'), 'pay' => $this->createDeadlockException()]);
+        $failed   = new HandlerFailedException(new Envelope(new stdClass()), ['pay' => $this->createDeadlockException()]);
         $attempts = 0;
 
         $result = $this->createService(['default' => new RetryProfile('default', 2, 0)])->retry(static function () use ($failed, &$attempts): int {
@@ -234,7 +237,7 @@ final class DeadlockRetryServiceTest extends TestCase
     public function testAnExhaustedHandlerFailedExceptionEscapesAsIs(): void
     {
         $this->stubOpenManager();
-        $failed = new HandlerFailedException(new Envelope(new stdClass()), ['audit' => new LogicException('audit bug'), 'pay' => $this->createDeadlockException()]);
+        $failed = new HandlerFailedException(new Envelope(new stdClass()), ['pay' => $this->createDeadlockException()]);
 
         $this->expectExceptionObject($failed);
 
@@ -243,10 +246,51 @@ final class DeadlockRetryServiceTest extends TestCase
         });
     }
 
-    public function testATransientStorageFailureInsideAHandlerFailedExceptionIsRetried(): void
+    /**
+     * @return iterable<string, array{Throwable}>
+     */
+    public static function unsafeReplays(): iterable
+    {
+        $deadlock = static fn (): DeadlockException => new DeadlockException(new class('Deadlock found when trying to get lock', 1213) extends Exception implements DriverExceptionInterface {
+            public function getSQLState(): string
+            {
+                return '40001';
+            }
+        }, null);
+
+        yield 'a domain error next to a deadlock' => [new HandlerFailedException(new Envelope(new stdClass()), ['audit' => new LogicException('audit bug'), 'pay' => $deadlock()])];
+        yield 'a deadlock next to a domain error' => [new HandlerFailedException(new Envelope(new stdClass()), ['pay' => $deadlock(), 'audit' => new LogicException('audit bug')])];
+        yield 'another handler already completed' => [new HandlerFailedException(new Envelope(new stdClass(), [new HandledStamp(null, 'notify')]), ['pay' => $deadlock()])];
+        yield 'a delayed message handler' => [new DelayedMessageHandlingException([$deadlock()])];
+        yield 'a TransientStorageFailure over a cache error (P1)' => [TransientStorageFailure::fromPrevious(new RuntimeException('cache backend down'))];
+        yield 'the same, inside a HandlerFailedException' => [new HandlerFailedException(new Envelope(new stdClass()), ['b' => TransientStorageFailure::fromPrevious(new RuntimeException('cache down'))])];
+    }
+
+    #[DataProvider('unsafeReplays')]
+    public function testUnsafeReplaysRunExactlyOnce(Throwable $failure): void
     {
         $this->stubOpenManager();
-        $failed   = new HandlerFailedException(new Envelope(new stdClass()), ['a' => new LogicException('bug'), 'b' => TransientStorageFailure::fromPrevious(new RuntimeException('cache down'))]);
+        $attempts = 0;
+        $caught   = null;
+
+        try {
+            $this->createService(['default' => new RetryProfile('default', 3, 0)])->retry(static function () use ($failure, &$attempts): never {
+                ++$attempts;
+
+                throw $failure;
+            });
+        } catch (Throwable $exception) {
+            $caught = $exception;
+        }
+
+        self::assertSame(1, $attempts);
+        self::assertSame($failure, $caught);
+    }
+
+    public function testATransientStorageFailureWithoutAPreviousErrorInsideAHandlerFailedExceptionIsRetried(): void
+    {
+        $this->stubOpenManager();
+        $failed   = new HandlerFailedException(new Envelope(new stdClass()), ['b' => new TransientStorageFailure()]);
         $attempts = 0;
 
         $this->createService(['default' => new RetryProfile('default', 1, 0)])->retry(static function () use ($failed, &$attempts): void {
