@@ -34,6 +34,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Demo: `demo/symfony8/composer.lock` now installs nowo-tech/transaction-doctrine 1.6.0. The locks of 3.0.0 and 3.2.0 did not install nowo-tech/transaction-doctrine, which the bundle already required (^1.5): the demo installs from its lock, so it would fail with class not found on the first lock conflict (`ConflictCode`). The bundle's composer.json constraint was already right; hosts are not affected.
+
 ## [3.2.0] - 2026-11-18
 
 ### Added
