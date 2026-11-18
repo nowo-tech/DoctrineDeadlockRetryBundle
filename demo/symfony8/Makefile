@@ -91,7 +91,7 @@ cache-clear: ensure-up
 	@$(call dc,exec php php bin/console cache:clear)
 
 update-bundle: ensure-up
-	@$(call dc,exec php composer update nowo-tech/doctrine-deadlock-retry-bundle --no-interaction)
+	@$(call dc,exec php composer update nowo-tech/doctrine-deadlock-retry-bundle -w --no-interaction)
 	@$(call dc,exec php php bin/console cache:clear)
 	@echo "Bundle updated."
 
