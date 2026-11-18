@@ -33,6 +33,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`CONFLICT_001` / `CONFLICT_002` codes** (REQ-RUNTIME-003 rule 6) in the `http_mapping` answer, from
+  `nowo-tech/transaction-doctrine` `^1.5` (`ConflictCode`): `CONFLICT_001` (nothing committed, with `Retry-After`) and
+  `CONFLICT_002` (part may be committed: a `ConcurrencyConflict` flagged committed, or a lost savepoint after a failed
+  commit; **no** `Retry-After`). The `problem_json` body gets an additive `code` key; the `exception` format throws
+  `Http\ConflictResponseException` / `Http\UnavailableResponseException`, which implement `Http\HasErrorCodeInterface`.
+- **`http_mapping.conflict_status`** (`409` default, or `503`).
+- **`docs/CONCURRENCY.md`**: write-path table, codes, host options and residual risks.
+- New dependency `nowo-tech/transaction-doctrine: ^1.5`.
+- Tests: the exhausted real deadlock (two sessions, MySQL 8.4 and MariaDB 11.4 / 11.8) answers 409 + `CONFLICT_001`;
+  conflict-mapping tests for `001`, `002`, the 503 option and the non-conflicts.
+
+### Changed
+
+- **Lock conflicts now answer 409 instead of 503** (set `conflict_status: 503` to keep the old status). See UPGRADING.
+- The default `conflict_exceptions` is now `OptimisticLockException` only, and its 409 carries the domain code
+  `RESOURCE_CHANGED` (never `CONFLICT_*`).
+
+### Fixed
+
+- A unique-constraint violation is no longer mapped to 409 by default: it is not a lock conflict (it is a real error,
+  or the host's own domain answer). Hosts that still list it in `conflict_exceptions` get `RESOURCE_CHANGED`.
+
 ## [3.1.0] - 2026-11-17
 
 ### Added

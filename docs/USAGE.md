@@ -11,7 +11,7 @@ Inject `Nowo\DoctrineDeadlockRetryBundle\Contract\DeadlockRetryInterface` (autow
 - [High-load readiness](#high-load-readiness)
   - [What goes wrong without it](#what-goes-wrong-without-it)
   - [Worker guard](#worker-guard)
-  - [HTTP mapping: 503 and 409 instead of 500](#http-mapping-503-and-409-instead-of-500)
+  - [HTTP mapping: 409 + `CONFLICT_*` instead of 500](#http-mapping-409--conflict_-instead-of-500)
   - [Standard Symfony host example](#standard-symfony-host-example)
   - [DDD / hexagonal host example](#ddd--hexagonal-host-example)
   - [Migration guide for bundles with their own reset helpers](#migration-guide-for-bundles-with-their-own-reset-helpers)
@@ -93,8 +93,8 @@ $this->deadlockRetry->retry(function (): void {
 7. **What escapes.** When the service gives up on a transient failure that only Doctrine wrapped (the ORM's 1305 after
    a nested deadlock, `OptimisticLockException("Commit failed")`), it rethrows the transient exception itself
    (`DeadlockException`, `LockWaitTimeoutException`, …), so `catch (RetryableException)` works. An exception of your
-   own that wraps it is rethrown as is. With [HTTP mapping](#http-mapping-503-and-409-instead-of-500) enabled it
-   becomes a 503 with `Retry-After`.
+   own that wraps it is rethrown as is. With [HTTP mapping](#http-mapping-409--conflict_-instead-of-500) enabled it
+   becomes a 409 with `Retry-After` and `CONFLICT_001` (503 with `conflict_status: 503`).
 
 Retries are logged at `info` (kind, profile, attempt, delay) and repairs at `notice` (nesting level, action). Logs
 never contain SQL, parameters or driver messages.
@@ -160,32 +160,37 @@ connection or initialises a lazy manager a request did not use. That makes it ch
 built for long-running workers. Outside HTTP and Messenger (a custom loop) call
 `Nowo\DoctrineDeadlockRetryBundle\Worker\ConnectionGuard::repair('loop', true)` yourself after each unit.
 
-### HTTP mapping: 503 and 409 instead of 500
+### HTTP mapping: 409 + `CONFLICT_*` instead of 500
 
 ```yaml
 nowo_doctrine_deadlock_retry:
-    retry_after_seconds: 1          # Retry-After of the 503
+    retry_after_seconds: 1          # Retry-After of a retry-safe conflict (CONFLICT_001)
     http_mapping:
         enabled: true
         paths: ['/api']             # path prefixes; with routes empty too: every request
         routes: []                  # route name prefixes, e.g. ['api_']
-        conflict_exceptions:        # mapped to 409 (default shown)
+        conflict_status: 409        # or 503, for hosts that keep the old answer
+        conflict_exceptions:        # domain conflicts mapped to 409 RESOURCE_CHANGED (default shown)
             - Doctrine\ORM\OptimisticLockException
-            - Doctrine\DBAL\Exception\UniqueConstraintViolationException
         format: exception           # or problem_json
 ```
 
 A `kernel.exception` listener (priority -64: after Symfony's `logKernelException`, so the failure is always logged,
 and before rendering at -128) maps a transient failure that reaches the kernel, retried or not, to
-**503 Service Unavailable** with `Retry-After`, and a conflict to **409 Conflict**. Path prefixes match on segment
+**409 Conflict** with `Retry-After` and `CONFLICT_001` (nothing committed; `CONFLICT_002` without `Retry-After` when part
+was committed; `conflict_status: 503` keeps the old status), and a configured domain conflict to **409** with
+`RESOURCE_CHANGED`. Unique-constraint violations and lost connections are **not** lock conflicts: they are not mapped
+unless you list them in `conflict_exceptions` yourself (then they answer `RESOURCE_CHANGED`, never `CONFLICT_*`).
+See [CONCURRENCY](CONCURRENCY.md). Path prefixes match on segment
 boundaries (`/api` matches `/api` and `/api/orders`, not `/apiary`); with `paths` and `routes` both empty the
 mapping applies to **every** request. A conflict class that wraps a driver error, such as the ORM's
 `OptimisticLockException("Commit failed")` around a failed `COMMIT` whose outcome is unknown, is not mapped. An exception that already is an
 `HttpExceptionInterface` is left alone. `Nowo\TransactionContract\TransientStorageFailure` (the framework-free
-exception of `nowo-tech/transaction-contract`) is mapped to 503 too, with its own `retryAfterSeconds()` hint.
+exception of `nowo-tech/transaction-contract`) is mapped like a lock conflict too, with its own `retryAfterSeconds()` hint.
 
-- `format: exception` (default) replaces the exception with a Symfony `ServiceUnavailableHttpException` /
-  `ConflictHttpException` (the original as `previous`). Your own error rendering produces the response, so a host
+- `format: exception` (default) replaces the exception with a `ConflictHttpException` subclass
+  (`Http\ConflictResponseException`) or, with `conflict_status: 503`, a `ServiceUnavailableHttpException` subclass
+  (`Http\UnavailableResponseException`), both implementing `Http\HasErrorCodeInterface::errorCode()` (the original as `previous`). Your own error rendering produces the response, so a host
   that answers `application/problem+json` (API Platform, a custom renderer) keeps doing so.
 - `format: problem_json` answers directly with an RFC 9457 `application/problem+json` body
   (`type`, `title`, `status`, `detail`).
@@ -229,7 +234,7 @@ final class OrderController
             });
         });
 
-        return new JsonResponse(['id' => $order->getId()]);   // a deadlock after 4 attempts is a 503, not a 500
+        return new JsonResponse(['id' => $order->getId()]);   // a deadlock after 4 attempts is a 409, not a 500
     }
 }
 ```
@@ -263,7 +268,7 @@ The bundle ships the retrying Doctrine adapter, `Transaction\DeadlockRetryTransa
 `nowo_doctrine_deadlock_retry.transaction_runner`). It runs the operation in `wrapInTransaction()` (flush + commit)
 through `retry()` with `transaction_runner.profile` (the default profile when null). When retries are exhausted, or
 the call runs inside a caller's transaction, a transient failure becomes
-`TransientStorageFailure::fromPrevious($failure, retry_after_seconds)`; `http_mapping` answers it with 503 +
+`TransientStorageFailure::fromPrevious($failure, retry_after_seconds)`; `http_mapping` answers it with 409 +
 `Retry-After`. A `TransientStorageFailure` thrown by a nested runner is classified by the storage error it carries, so
 the outermost runner replays the whole unit of work (a lock wait only with `retry_lock_wait_timeout`).
 
@@ -331,7 +336,7 @@ without this bundle needs DoctrineBundle's `doctrine_ping_connection` / `doctrin
 | `try { … } catch (\Throwable $e) { $conn->rollBack(); throw $e; }` | Remove the extra `rollBack()` (R3). If you must clean up, use `ConnectionRepairer::afterFailure($connection, $entryLevel)`. |
 | `wrapInTransaction()` + flush inside, no retry | Run the whole closure through the runner (or `DeadlockRetryService::retry()`), outermost only. |
 | Catch `DeadlockException` only | Classify with `TransientFailureClassifier` (also 1205, 1020, 40001, 40P01, 55P03). |
-| Let the 500 through | Throw `TransientStorageFailure`, or let the host's `http_mapping` turn it into 503 + `Retry-After`. |
+| Let the 500 through | Throw `TransientStorageFailure`, or let the host's `http_mapping` turn it into 409 + `Retry-After` + `CONFLICT_001`. |
 
 Add a test that a failed unit of work leaves the connection at its entry nesting level, the manager with no pending
 changes, and session state (a session variable) intact.

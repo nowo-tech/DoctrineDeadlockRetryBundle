@@ -38,6 +38,7 @@
         "doctrine/doctrine-bundle": "^2.8 || ^3.0",
         "doctrine/orm": "^3.0",
         "nowo-tech/transaction-contract": "^1.0",
+        "nowo-tech/transaction-doctrine": "^1.5",
         "psr/log": "^1.1 || ^2.0 || ^3.0",
         "symfony/config": "^6.4 || ^7.4 || ^8.0",
         "symfony/dependency-injection": "^6.4 || ^7.4 || ^8.0",

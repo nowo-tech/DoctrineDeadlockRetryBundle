@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Nowo\DoctrineDeadlockRetryBundle\Tests\Unit\DependencyInjection;
 
-use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\OptimisticLockException;
 use InvalidArgumentException;
 use Nowo\DoctrineDeadlockRetryBundle\Config\RetryProfile;
@@ -234,7 +233,8 @@ final class NowoDoctrineDeadlockRetryExtensionTest extends TestCase
         $this->assertSame(5, $listener->getArgument('$retryAfterSeconds'));
         $this->assertSame(['/api'], $listener->getArgument('$pathPrefixes'));
         $this->assertSame(['api_'], $listener->getArgument('$routePrefixes'));
-        $this->assertSame([OptimisticLockException::class, UniqueConstraintViolationException::class], $listener->getArgument('$conflictExceptions'));
+        $this->assertSame([OptimisticLockException::class], $listener->getArgument('$conflictExceptions'));
+        $this->assertSame(409, $listener->getArgument('$conflictStatus'));
         $this->assertSame('problem_json', $listener->getArgument('$format'));
     }
 

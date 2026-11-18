@@ -5,39 +5,52 @@ declare(strict_types=1);
 namespace Nowo\DoctrineDeadlockRetryBundle\EventListener;
 
 use Doctrine\DBAL\Driver\Exception as DriverExceptionInterface;
+use InvalidArgumentException;
 use Nowo\DoctrineDeadlockRetryBundle\Failure\ThrowableChain;
 use Nowo\DoctrineDeadlockRetryBundle\Failure\TransientFailureClassifier;
+use Nowo\DoctrineDeadlockRetryBundle\Http\ConflictResponseException;
+use Nowo\DoctrineDeadlockRetryBundle\Http\UnavailableResponseException;
 use Nowo\TransactionContract\TransientStorageFailure;
+use Nowo\TransactionDoctrine\ConflictCode;
+use Nowo\TransactionDoctrine\TransientFailureClassifier as CommitOutcomeClassifier;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Event\ExceptionEvent;
-use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
-use Symfony\Component\HttpKernel\Exception\ServiceUnavailableHttpException;
 use Symfony\Component\HttpKernel\KernelEvents;
 use Throwable;
 
+use function in_array;
 use function is_int;
 use function is_string;
 use function rtrim;
 use function str_starts_with;
 
 /**
- * Maps transient storage failures that reach the kernel (retries exhausted, or never retried) to 503 Service
- * Unavailable with Retry-After, and conflict failures to 409 Conflict, instead of a 500 (opt-in: http_mapping).
+ * Maps lock conflicts that reach the kernel (retries exhausted, or never retried) to 409 Conflict with a stable code
+ * instead of a 500 (opt-in: http_mapping), as REQ-RUNTIME-003 rule 6 asks:
  *
- * Transient: whatever TransientFailureClassifier recognises (deadlock, lock wait timeout, serialization failure, the
+ * - CONFLICT_001: nothing was committed. 409 + Retry-After (the replay is safe).
+ * - CONFLICT_002: part of the work may be committed (a ConcurrencyConflict flagged committed, or a lost savepoint after
+ *   a failed commit). 409 and NO Retry-After: the client must reload before it tries again.
+ *
+ * A host that prefers the old answer sets `conflict_status: 503`: same codes, 503 instead of 409. Unique-constraint
+ * violations and connection losses are NOT lock conflicts and are never mapped here; a configured conflict exception
+ * (default: the ORM's OptimisticLockException) answers 409 with its own domain code (DOMAIN_CODE), never CONFLICT_*.
+ *
+ * Lock conflict: whatever TransientFailureClassifier recognises (deadlock, lock wait timeout, serialization failure, the
  * ORM's 1305 that carries a nested deadlock, any DBAL RetryableException) and the framework-free
  * Nowo\TransactionContract\TransientStorageFailure, whose retryAfterSeconds() hint wins over the configured value.
  * A TransientStorageFailure is found anywhere in the previous chain or inside a Messenger HandlerFailedException; other
  * transient failures follow TransientFailureClassifier (inside a HandlerFailedException, every wrapped exception must
  * be transient), and so do the conflict classes (every wrapped exception must be a conflict).
  *
- * Format "exception" (default) replaces the throwable with a Symfony HttpException carrying the status and headers,
- * so the host's own error rendering (problem+json included) produces the response. Format "problem_json" sets an
- * RFC 9457 application/problem+json response directly. Either way the client only sees a generic text: SQL,
- * parameters and driver messages stay in the previous exception, for the logs.
+ * Format "exception" (default) replaces the throwable with a Symfony HttpException (HasErrorCodeInterface) carrying the
+ * status and headers, so the host's own error rendering (problem+json included) produces the response. Format
+ * "problem_json" sets an RFC 9457 application/problem+json response directly, with the code in an additive "code" key.
+ * Either way the client only sees a generic text: SQL, parameters and driver messages stay in the previous exception,
+ * for the logs.
  *
  * Stateless: safe as a shared service in a long-running worker.
  *
@@ -57,8 +70,16 @@ final class TransientFailureExceptionListener implements EventSubscriberInterfac
 
     public const UNAVAILABLE_DETAIL = 'The request could not be completed because of a temporary storage conflict. Retry later.';
     public const CONFLICT_DETAIL    = 'The request conflicts with a concurrent change. Reload the resource and retry.';
+    public const COMMITTED_DETAIL   = 'The request met a temporary storage conflict after part of it was saved. Reload the resource before trying again.';
+
+    /** Error code of a configured conflict exception (a domain conflict, never CONFLICT_*). */
+    public const DOMAIN_CODE = 'RESOURCE_CHANGED';
+
+    public const STATUS_CONFLICT            = 409;
+    public const STATUS_SERVICE_UNAVAILABLE = 503;
 
     private readonly TransientFailureClassifier $classifier;
+    private readonly CommitOutcomeClassifier $commitOutcome;
 
     /**
      * @param int $retryAfterSeconds Retry-After value of a 503
@@ -66,6 +87,7 @@ final class TransientFailureExceptionListener implements EventSubscriberInterfac
      * @param list<string> $routePrefixes Route name prefixes handled
      * @param list<string> $conflictExceptions Exception classes (or interfaces) mapped to 409, searched along the previous chain; inside a HandlerFailedException every wrapped exception must match
      * @param string $format FORMAT_EXCEPTION or FORMAT_PROBLEM_JSON
+     * @param int $conflictStatus Status of a lock conflict: 409 (default) or 503 (hosts that keep the old answer)
      */
     public function __construct(
         private readonly int $retryAfterSeconds = 1,
@@ -74,8 +96,15 @@ final class TransientFailureExceptionListener implements EventSubscriberInterfac
         private readonly array $conflictExceptions = [],
         private readonly string $format = self::FORMAT_EXCEPTION,
         ?TransientFailureClassifier $classifier = null,
+        private readonly int $conflictStatus = self::STATUS_CONFLICT,
+        ?CommitOutcomeClassifier $commitOutcome = null,
     ) {
-        $this->classifier = $classifier ?? new TransientFailureClassifier();
+        if (!in_array($conflictStatus, [self::STATUS_CONFLICT, self::STATUS_SERVICE_UNAVAILABLE], true)) {
+            throw new InvalidArgumentException('The conflict status must be 409 or 503.');
+        }
+
+        $this->classifier    = $classifier ?? new TransientFailureClassifier();
+        $this->commitOutcome = $commitOutcome ?? new CommitOutcomeClassifier();
     }
 
     /**
@@ -96,16 +125,10 @@ final class TransientFailureExceptionListener implements EventSubscriberInterfac
 
         $retryAfter = $this->retryAfter($throwable);
 
-        if (is_int($retryAfter)) {
-            $headers = ['Retry-After' => (string) $retryAfter];
-
-            if ($this->format === self::FORMAT_PROBLEM_JSON) {
-                $event->setResponse($this->problem(503, 'Service Unavailable', self::UNAVAILABLE_DETAIL, $headers));
-
-                return;
-            }
-
-            $event->setThrowable(new ServiceUnavailableHttpException((string) $retryAfter, self::UNAVAILABLE_DETAIL, $throwable));
+        if (is_int($retryAfter) || $this->commitOutcome->isCommitOutcomeUnknown($throwable)) {
+            $code = ConflictCode::forFailure($throwable);
+            // CONFLICT_002 never carries Retry-After: replaying could repeat what was already saved.
+            $this->answerLockConflict($event, $throwable, $code, $code->retrySafe() ? ($retryAfter ?? $this->retryAfterSeconds) : null);
 
             return;
         }
@@ -115,12 +138,31 @@ final class TransientFailureExceptionListener implements EventSubscriberInterfac
         }
 
         if ($this->format === self::FORMAT_PROBLEM_JSON) {
-            $event->setResponse($this->problem(409, 'Conflict', self::CONFLICT_DETAIL, []));
+            $event->setResponse($this->problem(409, 'Conflict', self::CONFLICT_DETAIL, [], self::DOMAIN_CODE));
 
             return;
         }
 
-        $event->setThrowable(new ConflictHttpException(self::CONFLICT_DETAIL, $throwable));
+        $event->setThrowable(new ConflictResponseException(self::DOMAIN_CODE, self::CONFLICT_DETAIL, $throwable));
+    }
+
+    private function answerLockConflict(ExceptionEvent $event, Throwable $throwable, ConflictCode $code, ?int $retryAfter): void
+    {
+        $detail  = $code->retrySafe() ? ($this->conflictStatus === self::STATUS_CONFLICT ? self::CONFLICT_DETAIL : self::UNAVAILABLE_DETAIL) : self::COMMITTED_DETAIL;
+        $headers = $retryAfter === null ? [] : ['Retry-After' => (string) $retryAfter];
+
+        if ($this->format === self::FORMAT_PROBLEM_JSON) {
+            $title = $this->conflictStatus === self::STATUS_CONFLICT ? 'Conflict' : 'Service Unavailable';
+            $event->setResponse($this->problem($this->conflictStatus, $title, $detail, $headers, $code->value));
+
+            return;
+        }
+
+        $event->setThrowable(
+            $this->conflictStatus === self::STATUS_CONFLICT
+                ? new ConflictResponseException($code->value, $detail, $throwable, $headers)
+                : new UnavailableResponseException($code->value, $retryAfter, $detail, $throwable),
+        );
     }
 
     private function handles(Request $request): bool
@@ -201,10 +243,10 @@ final class TransientFailureExceptionListener implements EventSubscriberInterfac
     /**
      * @param array<string, string> $headers
      */
-    private function problem(int $status, string $title, string $detail, array $headers): JsonResponse
+    private function problem(int $status, string $title, string $detail, array $headers, string $code): JsonResponse
     {
         return new JsonResponse(
-            ['type' => 'about:blank', 'title' => $title, 'status' => $status, 'detail' => $detail],
+            ['type' => 'about:blank', 'title' => $title, 'status' => $status, 'detail' => $detail, 'code' => $code],
             $status,
             ['Content-Type' => 'application/problem+json'] + $headers,
         );

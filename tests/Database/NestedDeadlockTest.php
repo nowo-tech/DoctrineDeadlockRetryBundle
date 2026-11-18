@@ -67,7 +67,7 @@ final class NestedDeadlockTest extends DatabaseTestCase
     }
 
     #[DataProvider('mysqlFamily')]
-    public function testExhaustedNestedDeadlockMapsTo503WithRetryAfter(string $server): void
+    public function testExhaustedNestedDeadlockMapsTo409WithRetryAfter(string $server): void
     {
         $this->boot($server);
         $service = $this->service(maxRetries: 0);
@@ -95,7 +95,8 @@ final class NestedDeadlockTest extends DatabaseTestCase
 
         $response = $event->getResponse();
         self::assertNotNull($response);
-        self::assertSame(503, $response->getStatusCode());
+        self::assertSame(409, $response->getStatusCode());
+        self::assertStringContainsString('"code":"CONFLICT_001"', (string) $response->getContent());
         self::assertSame('3', $response->headers->get('Retry-After'));
         self::assertSame('application/problem+json', $response->headers->get('Content-Type'));
         self::assertStringNotContainsStringIgnoringCase('ddrb_counter', (string) $response->getContent());
