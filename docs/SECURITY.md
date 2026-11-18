@@ -16,14 +16,14 @@
 
 ## Summary
 
-The bundle replays Doctrine units of work that failed for a transient reason (deadlock, lock wait timeout, serialization failure). Since 3.0 it also repairs connections a failure left in a transaction, offers an opt-in worker guard for long-running processes, maps transient failures that reach the kernel to `503` / `409` (opt-in `http_mapping`) and adapts `nowo-tech/transaction-contract`'s `TransactionRunnerInterface`. It registers no routes and stores no secrets.
+The bundle replays Doctrine units of work that failed for a transient reason (deadlock, lock wait timeout, serialization failure). Since 3.0 it also repairs connections a failure left in a transaction, offers an opt-in worker guard for long-running processes, maps transient failures that reach the kernel to `409` + `CONFLICT_001` / `CONFLICT_002` (`503` with `conflict_status: 503`; opt-in `http_mapping`) and adapts `nowo-tech/transaction-contract`'s `TransactionRunnerInterface`. It registers no routes and stores no secrets.
 
 ## Attack surface
 
 | Surface | Exposure | Controls |
 | --- | --- | --- |
 | `DeadlockRetryService` / `DeadlockRetryTransactionRunner` | Application code only | Bounded profiles: `max_retries`, jittered backoff capped by `backoff_max_ms`, optional total budget `max_total_ms` |
-| `TransientFailureExceptionListener` (opt-in `http_mapping`) | Every HTTP response that ends in a transient storage failure | Client sees a generic text with `503` + `Retry-After` or `409`; SQL, parameters and driver messages stay in the previous exception |
+| `TransientFailureExceptionListener` (opt-in `http_mapping`) | Every HTTP response that ends in a transient storage failure | Client sees a generic text with `409` + `Retry-After` + `CONFLICT_001` (or `CONFLICT_002` without `Retry-After`; `503` with `conflict_status: 503`); SQL, parameters and driver messages stay in the previous exception |
 | `WorkerGuardSubscriber` / `MessengerWorkerGuardSubscriber` (opt-in `worker_guard`) | Every request / message of a long-running worker | Rolls back or closes connections left in a transaction, resets closed managers, optionally clears managers; touches only services already initialised |
 | Configuration | Deployment | Strict tree; unknown profile names fail with `UnknownRetryProfileException` |
 

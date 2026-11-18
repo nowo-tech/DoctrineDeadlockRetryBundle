@@ -156,6 +156,7 @@ final class NowoDoctrineDeadlockRetryExtension extends Extension
                 '$conflictExceptions' => array_values((array) $config['conflict_exceptions']),
                 '$format'             => (string) $config['format'],
                 '$classifier'         => new Reference(TransientFailureClassifier::class),
+                '$conflictStatus'     => (int) $config['conflict_status'],
             ])
             ->addTag('kernel.event_subscriber');
     }

@@ -29,6 +29,22 @@
 
 ## Unreleased
 
+Minor release (behaviour of the opt-in `http_mapping` changes). `composer update nowo-tech/doctrine-deadlock-retry-bundle`
+also installs `nowo-tech/transaction-doctrine ^1.5`.
+
+- **409 instead of 503.** A deadlock, lock wait timeout or serialization failure that reaches the kernel now answers
+  **409 + `Retry-After` + `CONFLICT_001`**. Keep the old status with `http_mapping.conflict_status: 503` (the codes stay).
+- **`CONFLICT_002`**: when part of the work may be committed (`ConcurrencyConflict::$committed`, or a lost savepoint after
+  a failed commit) the answer is 409 **without** `Retry-After`. Clients must reload before retrying.
+- **`instanceof` checks.** A host check `instanceof ServiceUnavailableHttpException` only matches with `conflict_status: 503`; by default the exception is a `ConflictHttpException` subclass.
+- **`X-Conflict-Code` header** (`CONFLICT_001` / `CONFLICT_002`) is sent in both formats and both statuses; a `HandlerFailedException` with a completed handler, a `DelayedMessageHandlingException`, a committed conflict, or a `TransientStorageFailure` over a non-storage error answers `CONFLICT_002` (a lock conflict behind such a wrapper is now answered instead of a 500).
+- **Shapes keep their keys.** `problem_json` gains a `code` key; the `exception` format throws subclasses of
+  `ConflictHttpException` / `ServiceUnavailableHttpException` (see the `instanceof` note above). Read the code with
+  `HasErrorCodeInterface::errorCode()`.
+- **Default `conflict_exceptions` no longer lists `UniqueConstraintViolationException`**: a unique violation is not a lock
+  conflict. Catch it where "only one" is an expected race and answer your domain result, or list it yourself (it then
+  answers 409 `RESOURCE_CHANGED`, never `CONFLICT_*`). `OptimisticLockException` stays, with the code `RESOURCE_CHANGED`.
+
 ## To 3.1.0
 
 From **3.0.0**:

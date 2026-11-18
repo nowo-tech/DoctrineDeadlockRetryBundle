@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Nowo\DoctrineDeadlockRetryBundle\DependencyInjection;
 
-use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\OptimisticLockException;
 use Nowo\DoctrineDeadlockRetryBundle\Config\RetryProfile;
 use Nowo\DoctrineDeadlockRetryBundle\EventListener\TransientFailureExceptionListener;
@@ -211,7 +210,7 @@ final class Configuration implements ConfigurationInterface
         $node = (new TreeBuilder('http_mapping'))->getRootNode();
 
         $node
-            ->info('Maps transient failures that reach the kernel to 503 + Retry-After and conflicts to 409, instead of 500')
+            ->info('Maps lock conflicts that reach the kernel to 409 + Retry-After + CONFLICT_001 (CONFLICT_002 without Retry-After when part was committed; conflict_status 503 optional), instead of 500')
             ->canBeEnabled()
             ->children()
                 ->arrayNode('paths')
@@ -225,7 +224,12 @@ final class Configuration implements ConfigurationInterface
                 ->arrayNode('conflict_exceptions')
                     ->info('Exception classes or interfaces mapped to 409 Conflict (searched along the previous chain)')
                     ->scalarPrototype()->cannotBeEmpty()->end()
-                    ->defaultValue([OptimisticLockException::class, UniqueConstraintViolationException::class])
+                    ->defaultValue([OptimisticLockException::class])
+                ->end()
+                ->enumNode('conflict_status')
+                    ->info('Status of a lock conflict (deadlock, lock wait timeout, serialization failure): 409 with CONFLICT_001 / CONFLICT_002 (default) or 503 for hosts that keep the old answer')
+                    ->values([409, 503])
+                    ->defaultValue(409)
                 ->end()
                 ->enumNode('format')
                     ->info('exception: hand an HttpException to the host\'s error rendering (keeps its problem+json); problem_json: answer application/problem+json directly')

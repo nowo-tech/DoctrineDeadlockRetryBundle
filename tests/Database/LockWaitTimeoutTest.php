@@ -6,6 +6,7 @@ namespace Nowo\DoctrineDeadlockRetryBundle\Tests\Database;
 
 use Doctrine\DBAL\Exception\LockWaitTimeoutException;
 use Nowo\DoctrineDeadlockRetryBundle\EventListener\TransientFailureExceptionListener;
+use Nowo\DoctrineDeadlockRetryBundle\Http\HasErrorCodeInterface;
 use Nowo\DoctrineDeadlockRetryBundle\Tests\Database\Support\Counter;
 use Nowo\DoctrineDeadlockRetryBundle\Tests\Database\Support\DatabaseTestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -16,7 +17,7 @@ use Symfony\Component\HttpKernel\HttpKernelInterface;
 use Throwable;
 
 /**
- * A real lock wait timeout (1205) on MySQL / MariaDB, retried; and the 503 + Retry-After once retries are exhausted.
+ * A real lock wait timeout (1205) on MySQL / MariaDB, retried; and the 409 + Retry-After + CONFLICT_001 once retries are exhausted.
  *
  * @author Héctor Franco Aceituno <hectorfranco@nowo.tech>
  * @copyright 2026 Nowo.tech
@@ -50,7 +51,7 @@ final class LockWaitTimeoutTest extends DatabaseTestCase
     }
 
     #[DataProvider('mysqlFamily')]
-    public function testExhaustedLockWaitMapsTo503WithRetryAfter(string $server): void
+    public function testExhaustedLockWaitMapsTo409WithRetryAfter(string $server): void
     {
         $this->bootWithHeldRow($server);
         $service = $this->service(maxRetries: 1);
@@ -77,8 +78,9 @@ final class LockWaitTimeoutTest extends DatabaseTestCase
 
         $mapped = $event->getThrowable();
         self::assertInstanceOf(HttpExceptionInterface::class, $mapped);
-        self::assertSame(503, $mapped->getStatusCode());
-        self::assertSame(['Retry-After' => '2'], $mapped->getHeaders());
+        self::assertSame(409, $mapped->getStatusCode());
+        self::assertSame('2', $mapped->getHeaders()['Retry-After']);
+        self::assertSame('CONFLICT_001', $mapped instanceof HasErrorCodeInterface ? $mapped->errorCode() : null);
         self::assertStringNotContainsStringIgnoringCase('ddrb_counter', $mapped->getMessage());
     }
 

@@ -11,6 +11,7 @@ use DomainException;
 use Nowo\DoctrineDeadlockRetryBundle\Config\RetryProfile;
 use Nowo\DoctrineDeadlockRetryBundle\EventListener\TransientFailureExceptionListener;
 use Nowo\DoctrineDeadlockRetryBundle\Failure\TransientFailureClassifier;
+use Nowo\DoctrineDeadlockRetryBundle\Http\HasErrorCodeInterface;
 use Nowo\DoctrineDeadlockRetryBundle\Service\DeadlockRetryService;
 use Nowo\DoctrineDeadlockRetryBundle\Tests\Database\Support\Counter;
 use Nowo\DoctrineDeadlockRetryBundle\Tests\Database\Support\DatabaseTestCase;
@@ -32,7 +33,7 @@ final class AuditRegressionTest extends DatabaseTestCase
 {
     /**
      * QA-DDRB-M1: savepoints also vanish on an implicit commit (DDL inside the transaction). The resulting 1305 is not
-     * transient on its own: the unique violation is neither retried nor mapped to 503, and the committed work is
+     * transient on its own: the unique violation is neither retried nor mapped to a lock conflict, and the committed work is
      * not replayed.
      */
     #[DataProvider('mysqlFamily')]
@@ -72,6 +73,7 @@ final class AuditRegressionTest extends DatabaseTestCase
         $mapped = $event->getThrowable();
         self::assertInstanceOf(HttpExceptionInterface::class, $mapped);
         self::assertSame(409, $mapped->getStatusCode());
+        self::assertSame('RESOURCE_CHANGED', $mapped instanceof HasErrorCodeInterface ? $mapped->errorCode() : null, 'A domain 409 with its own code: a unique violation is never CONFLICT_*.');
     }
 
     /**

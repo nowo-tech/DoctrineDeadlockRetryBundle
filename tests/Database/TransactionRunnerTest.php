@@ -6,6 +6,7 @@ namespace Nowo\DoctrineDeadlockRetryBundle\Tests\Database;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Nowo\DoctrineDeadlockRetryBundle\Config\RetryProfile;
+use Nowo\DoctrineDeadlockRetryBundle\EventListener\TransientFailureExceptionListener;
 use Nowo\DoctrineDeadlockRetryBundle\Failure\TransientFailureClassifier;
 use Nowo\DoctrineDeadlockRetryBundle\Service\DeadlockRetryService;
 use Nowo\DoctrineDeadlockRetryBundle\Tests\Database\Support\Counter;
@@ -15,6 +16,9 @@ use Nowo\DoctrineDeadlockRetryBundle\Transaction\DeadlockRetryTransactionRunner;
 use Nowo\TransactionContract\TransientStorageFailure;
 use PHPUnit\Framework\Attributes\DataProvider;
 use stdClass;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpKernel\Event\ExceptionEvent;
+use Symfony\Component\HttpKernel\HttpKernelInterface;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Exception\HandlerFailedException;
 use Throwable;
@@ -52,6 +56,41 @@ final class TransactionRunnerTest extends DatabaseTestCase
         self::assertSame(2, $attempts);
         self::assertSame(0, $this->connection->getTransactionNestingLevel());
         self::assertSame(101, $this->committedValue(2));
+    }
+
+    /**
+     * End to end on a real nested deadlock (two sessions): the exhausted runner's failure reaches the kernel listener and
+     * answers 409 + Retry-After + CONFLICT_001 (REQ-RUNTIME-003 rule 6), with no SQL in the response.
+     */
+    #[DataProvider('mysqlFamily')]
+    public function testExhaustedDeadlockAnswers409Conflict001(string $server): void
+    {
+        $this->boot($server);
+        $service = $this->service(maxRetries: 0);
+        $runner  = new DeadlockRetryTransactionRunner($service, new TransientFailureClassifier(), 3);
+        $caught  = null;
+
+        try {
+            $runner->run(function () use ($service): void {
+                $this->deadlockingWork($service->getEntityManager(), true);
+            });
+        } catch (TransientStorageFailure $failure) {
+            $caught = $failure;
+        }
+
+        self::assertInstanceOf(TransientStorageFailure::class, $caught);
+        self::assertSame('OK', $this->otherSession()->await());
+        self::assertSame('OK', $this->otherSession()->execute('COMMIT'));
+
+        $event = new ExceptionEvent($this->createMock(HttpKernelInterface::class), Request::create('/api/pay'), HttpKernelInterface::MAIN_REQUEST, $caught);
+        (new TransientFailureExceptionListener(format: TransientFailureExceptionListener::FORMAT_PROBLEM_JSON))->onKernelException($event);
+
+        $response = $event->getResponse();
+        self::assertNotNull($response);
+        self::assertSame(409, $response->getStatusCode());
+        self::assertSame('3', $response->headers->get('Retry-After'));
+        self::assertStringContainsString('"code":"CONFLICT_001"', (string) $response->getContent());
+        self::assertStringNotContainsStringIgnoringCase('ddrb_counter', (string) $response->getContent());
     }
 
     #[DataProvider('mysqlFamily')]

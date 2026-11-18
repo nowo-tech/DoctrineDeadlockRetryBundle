@@ -4,7 +4,7 @@
 
 > ⭐ **Found this useful?** Install from Packagist and give it a star on GitHub.
 
-Symfony bundle that retries `EntityManager::flush()` and custom operations on transient Doctrine DBAL failures (deadlocks, lock wait timeouts, serialization failures), repairs the connection after a failure, and optionally guards long-running workers and maps exhausted retries to 503 + `Retry-After`.
+Symfony bundle that retries `EntityManager::flush()` and custom operations on transient Doctrine DBAL failures (deadlocks, lock wait timeouts, serialization failures), repairs the connection after a failure, and optionally guards long-running workers and maps exhausted retries to 409 + `Retry-After` + `CONFLICT_001`.
 
 ![FrankenPHP Friendly Worker Mode](docs/images/frankenphp-friendly.png)
 
@@ -19,7 +19,7 @@ This includes running when the kernel is **not** reset between requests (see [wo
 - **Default profile**: used when no profile name is passed.
 - Detects transient failures in the exception chain: `RetryableException`, MySQL / MariaDB 1213, 1205 and 1020, SQLSTATE 40001 / 40P01 / 55P03 (the ORM's 1305 after a nested deadlock counts through the deadlock it carries).
 - After a failure, rolls back what the operation left open and closes the connection only when that rollback fails (DBAL 4 nested deadlocks), so no worker keeps a poisoned nesting level; `retry()` clears the entity manager before a replay.
-- Opt-in **worker guard** (`kernel.request` / `kernel.terminate`) and **HTTP mapping** (503 + `Retry-After`, 409 for conflicts). See [high-load readiness](docs/USAGE.md#high-load-readiness).
+- Opt-in **worker guard** (`kernel.request` / `kernel.terminate`) and **HTTP mapping** (409 + `Retry-After` + `CONFLICT_001`, `CONFLICT_002` when part was committed, 503 optional). See [docs/CONCURRENCY.md](docs/CONCURRENCY.md). See [high-load readiness](docs/USAGE.md#high-load-readiness).
 - Resets a closed EntityManager through `ManagerRegistry` so long-running workers do not keep serving a closed manager.
 
 ## Version policy
