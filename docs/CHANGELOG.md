@@ -55,6 +55,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- A `DelayedMessageHandlingException` (the outer dispatch already committed) and a `TransientStorageFailure` over a non-storage error answer `CONFLICT_002` without `Retry-After`; a lock conflict behind a non-replayable wrapper (completed handler, delayed dispatch) is answered `CONFLICT_002` instead of a 500.
 - A `HandlerFailedException` with a completed handler (`HandledStamp`), or wrapping a committed `ConcurrencyConflict`, now answers `CONFLICT_002` without `Retry-After` instead of `CONFLICT_001`.
 - A unique-constraint violation is no longer mapped to 409 by default: it is not a lock conflict (it is a real error,
   or the host's own domain answer). Hosts that still list it in `conflict_exceptions` get `RESOURCE_CHANGED`.

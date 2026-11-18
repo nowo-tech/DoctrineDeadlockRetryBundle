@@ -129,7 +129,7 @@ transient failure along `getPrevious()` **and** inside the exceptions a Messenge
 - A `DelayedMessageHandlingException` (handlers that ran after the outer dispatch completed) is never transient.
 - A `TransientStorageFailure` without a previous error is retryable; one over a recognised storage error is classified
   by that error; one over anything else (a cache or HTTP error, after which the work may already be committed) is not
-  retried. `http_mapping` answers a lock conflict (409, or 503 with `conflict_status: 503`) for any `TransientStorageFailure` in the chain, with its `Retry-After` hint.
+  retried. `http_mapping` answers a lock conflict (409, or 503 with `conflict_status: 503`) for any `TransientStorageFailure` in the chain (`CONFLICT_002`, no `Retry-After`, when the failure is not replayable) and with its `Retry-After` hint otherwise.
 - `http_mapping` answers 409 for a `HandlerFailedException` only when every wrapped exception is a conflict; a domain
   error next to a deadlock or a conflict stays a 500.
 

@@ -20,12 +20,12 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Event\ExceptionEvent;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Symfony\Component\HttpKernel\KernelEvents;
+use Symfony\Component\Messenger\Exception\DelayedMessageHandlingException;
 use Symfony\Component\Messenger\Exception\HandlerFailedException;
 use Symfony\Component\Messenger\Stamp\HandledStamp;
 use Throwable;
 
 use function in_array;
-use function is_int;
 use function is_string;
 use function rtrim;
 use function str_starts_with;
@@ -129,12 +129,17 @@ final class TransientFailureExceptionListener implements EventSubscriberInterfac
             return;
         }
 
-        $retryAfter = $this->retryAfter($throwable);
+        $transient = $this->classifier->isTransient($throwable);
+        $storage   = $this->classifier->storageFailure($throwable);
+        $hint      = $storage?->retryAfterSeconds();
 
-        if (is_int($retryAfter) || $this->commitOutcome->isCommitOutcomeUnknown($throwable)) {
-            $code = $this->conflictCode($throwable);
+        // A lock conflict: replayable, or a TransientStorageFailure over a non-storage error, or a transient driver error
+        // hidden behind a wrapper that cannot be replayed (completed handler, delayed dispatch), or a failed commit.
+        if ($transient || $storage instanceof TransientStorageFailure || $this->hiddenTransient($throwable) || $this->commitOutcome->isCommitOutcomeUnknown($throwable)) {
+            // Not replayable (the work may be committed): CONFLICT_002 whatever the other signals say.
+            $code = $transient ? $this->conflictCode($throwable) : ConflictCode::Committed;
             // CONFLICT_002 never carries Retry-After: replaying could repeat what was already saved.
-            $this->answerLockConflict($event, $throwable, $code, $code->retrySafe() ? ($retryAfter ?? $this->retryAfterSeconds) : null);
+            $this->answerLockConflict($event, $throwable, $code, $code->retrySafe() ? ($hint ?? $this->retryAfterSeconds) : null);
 
             return;
         }
@@ -194,12 +199,43 @@ final class TransientFailureExceptionListener implements EventSubscriberInterfac
                 return ConflictCode::Committed;
             }
 
-            if ($current instanceof HandlerFailedException && $current->getEnvelope()->all(HandledStamp::class) !== []) {
+            if ($this->isNonReplayableWrapper($current)) {
                 return ConflictCode::Committed;
             }
         }
 
         return ConflictCode::forFailure($throwable);
+    }
+
+    /**
+     * A wrapper that proves earlier work completed: a HandlerFailedException whose envelope carries a HandledStamp, or a
+     * DelayedMessageHandlingException (the outer dispatch, and its transaction, already committed).
+     */
+    private function isNonReplayableWrapper(Throwable $throwable): bool
+    {
+        return $throwable instanceof DelayedMessageHandlingException
+            || ($throwable instanceof HandlerFailedException && $throwable->getEnvelope()->all(HandledStamp::class) !== []);
+    }
+
+    /**
+     * A transient driver error (deadlock, lock wait timeout, serialization failure) inside a wrapper that cannot be
+     * replayed: it is a lock conflict on work that may be committed.
+     */
+    private function hiddenTransient(Throwable $throwable): bool
+    {
+        foreach (ThrowableChain::flatten($throwable) as $wrapper) {
+            if (!$this->isNonReplayableWrapper($wrapper)) {
+                continue;
+            }
+
+            foreach (ThrowableChain::flatten($wrapper) as $inner) {
+                if ($inner !== $wrapper && $this->commitOutcome->isTransient($inner)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private function handles(Request $request): bool
@@ -232,20 +268,6 @@ final class TransientFailureExceptionListener implements EventSubscriberInterfac
         }
 
         return false;
-    }
-
-    /**
-     * @return int|null Seconds for Retry-After, or null when the failure is not transient
-     */
-    private function retryAfter(Throwable $throwable): ?int
-    {
-        $storageFailure = $this->classifier->storageFailure($throwable);
-
-        if ($storageFailure instanceof TransientStorageFailure) {
-            return $storageFailure->retryAfterSeconds() ?? $this->retryAfterSeconds;
-        }
-
-        return $this->classifier->isTransient($throwable) ? $this->retryAfterSeconds : null;
     }
 
     /**

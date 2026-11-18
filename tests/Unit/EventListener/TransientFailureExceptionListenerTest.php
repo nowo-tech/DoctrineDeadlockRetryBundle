@@ -29,6 +29,7 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\HttpKernel\HttpKernelInterface;
 use Symfony\Component\HttpKernel\KernelEvents;
 use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\Exception\DelayedMessageHandlingException;
 use Symfony\Component\Messenger\Exception\HandlerFailedException;
 use Symfony\Component\Messenger\Stamp\HandledStamp;
 use Throwable;
@@ -194,6 +195,14 @@ final class TransientFailureExceptionListenerTest extends TestCase
         yield 'HFE[TSF] after a completed handler' => [static fn (): Throwable => new HandlerFailedException($handled(), [$tsf()]), 'CONFLICT_002', false];
         yield 'HFE[deadlock, committed conflict]' => [static fn (): Throwable => new HandlerFailedException($plain(), ['a' => $driver(), 'b' => $committed()]), 'CONFLICT_002', false];
         yield 'HFE[TSF, committed conflict]' => [static fn (): Throwable => new HandlerFailedException($plain(), ['a' => $tsf(), 'b' => $committed()]), 'CONFLICT_002', false];
+        // Audit TJ-2 DD-6: a delayed dispatch means the outer dispatch already committed.
+        yield 'DMHE[HFE[TSF]]' => [static fn (): Throwable => new DelayedMessageHandlingException([new HandlerFailedException($plain(), [$tsf()])]), 'CONFLICT_002', false];
+        yield 'DMHE[TSF]' => [static fn (): Throwable => new DelayedMessageHandlingException([$tsf()]), 'CONFLICT_002', false];
+        // DD-7: a TransientStorageFailure over a non-storage error may have committed.
+        yield 'TSF over an HTTP error' => [static fn (): Throwable => new TransientStorageFailure(null, 'x', new LogicException('http 502')), 'CONFLICT_002', false];
+        // DD-8: a lock conflict behind a wrapper that cannot be replayed is still a conflict, not a 500.
+        yield 'HFE[deadlock] after a completed handler' => [static fn (): Throwable => new HandlerFailedException($handled(), [$driver()]), 'CONFLICT_002', false];
+        yield 'DMHE[deadlock]' => [static fn (): Throwable => new DelayedMessageHandlingException([$driver()]), 'CONFLICT_002', false];
         yield 'HFE[committed conflict] after a completed handler' => [static fn (): Throwable => new HandlerFailedException($handled(), [$committed()]), 'CONFLICT_002', false];
     }
 
@@ -278,7 +287,8 @@ final class TransientFailureExceptionListenerTest extends TestCase
         (new TransientFailureExceptionListener(retryAfterSeconds: 2))->onKernelException($event);
         $mapped = $event->getThrowable();
         self::assertInstanceOf(HttpExceptionInterface::class, $mapped);
-        self::assertSame('8', $mapped->getHeaders()['Retry-After'], 'Any TransientStorageFailure answers 409 with its hint, as in 3.0.');
+        self::assertSame('CONFLICT_002', $mapped instanceof HasErrorCodeInterface ? $mapped->errorCode() : null, 'A failure next to a domain error cannot be replayed: CONFLICT_002 (3.1 answered 503 with the hint).');
+        self::assertArrayNotHasKey('Retry-After', $mapped->getHeaders());
 
         $event = $this->event(new HandlerFailedException(new Envelope(new stdClass()), ['a' => new OptimisticLockException('stale', null), 'b' => new UniqueConstraintViolationException($this->driverError(1062, '23000'), null)]));
         (new TransientFailureExceptionListener(conflictExceptions: [OptimisticLockException::class, UniqueConstraintViolationException::class]))->onKernelException($event);

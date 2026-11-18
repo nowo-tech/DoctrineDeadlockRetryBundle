@@ -68,8 +68,10 @@ nowo_doctrine_deadlock_retry:
 ## Relation to transaction-doctrine
 
 `nowo-tech/transaction-doctrine` `^1.5` is a dependency: this bundle takes `ConflictCode` (the codes and which one a
-failure gets) and `TransientFailureClassifier::isCommitOutcomeUnknown()` (the `CONFLICT_002` rule) from it, so both
-packages answer a conflict identically. The two packages still carry **separate** classifiers and connection
+failure gets) and `TransientFailureClassifier::isCommitOutcomeUnknown()` (the `CONFLICT_002` rule) from it. The answers
+differ in the cases only this bundle sees: a `HandledStamp`, a `DelayedMessageHandlingException` and a
+`TransientStorageFailure` over a non-storage error answer `CONFLICT_002` here, which `ConflictCode::forFailure()` alone does
+not. The two packages still carry **separate** classifiers and connection
 repairers: this bundle's walks Messenger's `HandlerFailedException` (every wrapped exception transient, no
 `HandledStamp`) and `TransientStorageFailure` hints, which the transaction-doctrine classifier does not. Removing the copies
 needs that behaviour moved upstream first (a follow-up). Hosts that use `#[AsWriteUnit]` and the transaction-doctrine responder do not need `http_mapping`.
@@ -86,8 +88,8 @@ serialization failures, the worker guard, Messenger replay and the end-to-end 40
   code that is not in the failure chain is not seen; request-level detection arrives with transaction-doctrine 1.6
   `forRequest()`.
 - **Two responders.** When the `nowo-tech/transaction-doctrine` Symfony bundle is also registered, its conflict responder
-  (priority +64) answers first, with its own JSON keys and `Retry-After` policy; this listener (-64) then sees an
-  HttpException and leaves it alone. Enable only one of the two on the same paths.
+  (priority +64) answers first, with its own JSON keys and `Retry-After` policy. Once it sets a response, propagation stops and this
+  listener (-64) never runs for that failure. Enable only one of the two on the same paths.
 - A replay is only safe for work that is **idempotent per attempt**: the callable must redo load, modify and flush, keep
   no entity from a previous attempt, and run external side effects (mail, HTTP, files) after the commit. The bundle
   cannot check that.
