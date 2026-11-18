@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## Table of contents
 
 - [[Unreleased]](#unreleased)
+- [[3.2.0] - 2026-11-18](#320---2026-11-18)
 - [[3.1.0] - 2026-11-17](#310---2026-11-17)
 - [[3.0.0] - 2026-11-15](#300---2026-11-15)
 - [[2.4.0] - 2026-11-13](#240---2026-11-13)
@@ -32,6 +33,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - [[1.0.0] - 2026-05-20](#100---2026-05-20)
 
 ## [Unreleased]
+
+## [3.2.0] - 2026-11-18
 
 ### Added
 
@@ -59,6 +62,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - A `HandlerFailedException` with a completed handler (`HandledStamp`), or wrapping a committed `ConcurrencyConflict`, now answers `CONFLICT_002` without `Retry-After` instead of `CONFLICT_001`.
 - A unique-constraint violation is no longer mapped to 409 by default: it is not a lock conflict (it is a real error,
   or the host's own domain answer). Hosts that still list it in `conflict_exceptions` get `RESOURCE_CHANGED`.
+
+[3.2.0]: https://github.com/nowo-tech/DoctrineDeadlockRetryBundle/releases/tag/v3.2.0
 
 ## [3.1.0] - 2026-11-17
 
