@@ -36,6 +36,8 @@ also installs `nowo-tech/transaction-doctrine ^1.5`.
   **409 + `Retry-After` + `CONFLICT_001`**. Keep the old status with `http_mapping.conflict_status: 503` (the codes stay).
 - **`CONFLICT_002`**: when part of the work may be committed (`ConcurrencyConflict::$committed`, or a lost savepoint after
   a failed commit) the answer is 409 **without** `Retry-After`. Clients must reload before retrying.
+- **`instanceof` checks.** A host check `instanceof ServiceUnavailableHttpException` only matches with `conflict_status: 503`; by default the exception is a `ConflictHttpException` subclass.
+- **`X-Conflict-Code` header** (`CONFLICT_001` / `CONFLICT_002`) is sent in both formats and both statuses; a `HandlerFailedException` with a completed handler or a committed conflict answers `CONFLICT_002`.
 - **Shapes keep their keys.** `problem_json` gains a `code` key; the `exception` format throws subclasses of
   `ConflictHttpException` / `ServiceUnavailableHttpException`, so `instanceof` checks keep working. Read the code with
   `HasErrorCodeInterface::errorCode()`.

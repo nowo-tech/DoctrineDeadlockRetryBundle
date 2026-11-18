@@ -40,6 +40,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   `CONFLICT_002` (part may be committed: a `ConcurrencyConflict` flagged committed, or a lost savepoint after a failed
   commit; **no** `Retry-After`). The `problem_json` body gets an additive `code` key; the `exception` format throws
   `Http\ConflictResponseException` / `Http\UnavailableResponseException`, which implement `Http\HasErrorCodeInterface`.
+- **`X-Conflict-Code` response header** (`CONFLICT_001` / `CONFLICT_002`, never the domain code) in both formats at 409 and 503.
 - **`http_mapping.conflict_status`** (`409` default, or `503`).
 - **`docs/CONCURRENCY.md`**: write-path table, codes, host options and residual risks.
 - New dependency `nowo-tech/transaction-doctrine: ^1.5`.
@@ -54,6 +55,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- A `HandlerFailedException` with a completed handler (`HandledStamp`), or wrapping a committed `ConcurrencyConflict`, now answers `CONFLICT_002` without `Retry-After` instead of `CONFLICT_001`.
 - A unique-constraint violation is no longer mapped to 409 by default: it is not a lock conflict (it is a real error,
   or the host's own domain answer). Hosts that still list it in `conflict_exceptions` get `RESOURCE_CHANGED`.
 

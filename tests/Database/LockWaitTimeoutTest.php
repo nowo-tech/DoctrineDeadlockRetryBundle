@@ -79,7 +79,7 @@ final class LockWaitTimeoutTest extends DatabaseTestCase
         $mapped = $event->getThrowable();
         self::assertInstanceOf(HttpExceptionInterface::class, $mapped);
         self::assertSame(409, $mapped->getStatusCode());
-        self::assertSame(['Retry-After' => '2'], $mapped->getHeaders());
+        self::assertSame('2', $mapped->getHeaders()['Retry-After']);
         self::assertSame('CONFLICT_001', $mapped instanceof HasErrorCodeInterface ? $mapped->errorCode() : null);
         self::assertStringNotContainsStringIgnoringCase('ddrb_counter', $mapped->getMessage());
     }

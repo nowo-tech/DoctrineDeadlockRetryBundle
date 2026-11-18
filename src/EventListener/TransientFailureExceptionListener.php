@@ -13,12 +13,15 @@ use Nowo\DoctrineDeadlockRetryBundle\Http\UnavailableResponseException;
 use Nowo\TransactionContract\TransientStorageFailure;
 use Nowo\TransactionDoctrine\ConflictCode;
 use Nowo\TransactionDoctrine\TransientFailureClassifier as CommitOutcomeClassifier;
+use Nowo\TransactionDoctrine\WriteUnit\ConcurrencyConflict;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Event\ExceptionEvent;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Symfony\Component\HttpKernel\KernelEvents;
+use Symfony\Component\Messenger\Exception\HandlerFailedException;
+use Symfony\Component\Messenger\Stamp\HandledStamp;
 use Throwable;
 
 use function in_array;
@@ -75,6 +78,9 @@ final class TransientFailureExceptionListener implements EventSubscriberInterfac
     /** Error code of a configured conflict exception (a domain conflict, never CONFLICT_*). */
     public const DOMAIN_CODE = 'RESOURCE_CHANGED';
 
+    /** Response header carrying CONFLICT_001 / CONFLICT_002 (never the domain code), in both formats and statuses. */
+    public const CODE_HEADER = 'X-Conflict-Code';
+
     public const STATUS_CONFLICT            = 409;
     public const STATUS_SERVICE_UNAVAILABLE = 503;
 
@@ -126,7 +132,7 @@ final class TransientFailureExceptionListener implements EventSubscriberInterfac
         $retryAfter = $this->retryAfter($throwable);
 
         if (is_int($retryAfter) || $this->commitOutcome->isCommitOutcomeUnknown($throwable)) {
-            $code = ConflictCode::forFailure($throwable);
+            $code = $this->conflictCode($throwable);
             // CONFLICT_002 never carries Retry-After: replaying could repeat what was already saved.
             $this->answerLockConflict($event, $throwable, $code, $code->retrySafe() ? ($retryAfter ?? $this->retryAfterSeconds) : null);
 
@@ -149,7 +155,7 @@ final class TransientFailureExceptionListener implements EventSubscriberInterfac
     private function answerLockConflict(ExceptionEvent $event, Throwable $throwable, ConflictCode $code, ?int $retryAfter): void
     {
         $detail  = $code->retrySafe() ? ($this->conflictStatus === self::STATUS_CONFLICT ? self::CONFLICT_DETAIL : self::UNAVAILABLE_DETAIL) : self::COMMITTED_DETAIL;
-        $headers = $retryAfter === null ? [] : ['Retry-After' => (string) $retryAfter];
+        $headers = ($retryAfter === null ? [] : ['Retry-After' => (string) $retryAfter]) + [self::CODE_HEADER => $code->value];
 
         if ($this->format === self::FORMAT_PROBLEM_JSON) {
             $title = $this->conflictStatus === self::STATUS_CONFLICT ? 'Conflict' : 'Service Unavailable';
@@ -161,8 +167,39 @@ final class TransientFailureExceptionListener implements EventSubscriberInterfac
         $event->setThrowable(
             $this->conflictStatus === self::STATUS_CONFLICT
                 ? new ConflictResponseException($code->value, $detail, $throwable, $headers)
-                : new UnavailableResponseException($code->value, $retryAfter, $detail, $throwable),
+                : $this->unavailable($code, $retryAfter, $detail, $throwable, $headers),
         );
+    }
+
+    /**
+     * @param array<string, string> $headers
+     */
+    private function unavailable(ConflictCode $code, ?int $retryAfter, string $detail, Throwable $throwable, array $headers): UnavailableResponseException
+    {
+        $exception = new UnavailableResponseException($code->value, $retryAfter, $detail, $throwable);
+        $exception->setHeaders($exception->getHeaders() + $headers);
+
+        return $exception;
+    }
+
+    /**
+     * CONFLICT_002 as soon as anything in the chain, including every exception a Messenger HandlerFailedException wraps,
+     * may be committed: a ConcurrencyConflict flagged committed, or a HandlerFailedException whose envelope carries a
+     * HandledStamp (another handler completed). transaction-doctrine's forFailure() only follows getPrevious().
+     */
+    private function conflictCode(Throwable $throwable): ConflictCode
+    {
+        foreach (ThrowableChain::flatten($throwable) as $current) {
+            if ($current instanceof ConcurrencyConflict && $current->committed) {
+                return ConflictCode::Committed;
+            }
+
+            if ($current instanceof HandlerFailedException && $current->getEnvelope()->all(HandledStamp::class) !== []) {
+                return ConflictCode::Committed;
+            }
+        }
+
+        return ConflictCode::forFailure($throwable);
     }
 
     private function handles(Request $request): bool

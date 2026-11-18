@@ -14,10 +14,12 @@ use InvalidArgumentException;
 use LogicException;
 use Nowo\DoctrineDeadlockRetryBundle\EventListener\TransientFailureExceptionListener;
 use Nowo\DoctrineDeadlockRetryBundle\Http\ConflictResponseException;
+use Nowo\DoctrineDeadlockRetryBundle\Http\HasErrorCodeInterface;
 use Nowo\DoctrineDeadlockRetryBundle\Http\UnavailableResponseException;
 use Nowo\TransactionContract\TransientStorageFailure;
 use Nowo\TransactionDoctrine\TransientFailureKind as TransactionKind;
 use Nowo\TransactionDoctrine\WriteUnit\ConcurrencyConflict;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use stdClass;
 use Symfony\Component\HttpFoundation\Request;
@@ -28,6 +30,7 @@ use Symfony\Component\HttpKernel\HttpKernelInterface;
 use Symfony\Component\HttpKernel\KernelEvents;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Exception\HandlerFailedException;
+use Symfony\Component\Messenger\Stamp\HandledStamp;
 use Throwable;
 
 /**
@@ -52,7 +55,7 @@ final class TransientFailureExceptionListenerTest extends TestCase
         self::assertInstanceOf(ConflictResponseException::class, $mapped);
         self::assertSame(409, $mapped->getStatusCode());
         self::assertSame('CONFLICT_001', $mapped->errorCode());
-        self::assertSame(['Retry-After' => '4'], $mapped->getHeaders());
+        self::assertSame('4', $mapped->getHeaders()['Retry-After']);
         self::assertSame(TransientFailureExceptionListener::CONFLICT_DETAIL, $mapped->getMessage());
         self::assertSame($deadlock, $mapped->getPrevious());
         self::assertNull($event->getResponse());
@@ -69,7 +72,7 @@ final class TransientFailureExceptionListenerTest extends TestCase
         self::assertInstanceOf(UnavailableResponseException::class, $mapped);
         self::assertSame(503, $mapped->getStatusCode());
         self::assertSame('CONFLICT_001', $mapped->errorCode());
-        self::assertSame(['Retry-After' => 4], $mapped->getHeaders());
+        self::assertSame(4, $mapped->getHeaders()['Retry-After']);
         self::assertSame(TransientFailureExceptionListener::UNAVAILABLE_DETAIL, $mapped->getMessage());
         self::assertSame($deadlock, $mapped->getPrevious());
     }
@@ -91,7 +94,8 @@ final class TransientFailureExceptionListenerTest extends TestCase
         self::assertInstanceOf(ConflictResponseException::class, $mapped);
         self::assertSame(409, $mapped->getStatusCode());
         self::assertSame('CONFLICT_002', $mapped->errorCode());
-        self::assertSame([], $mapped->getHeaders(), 'Nothing is retry-safe: no Retry-After.');
+        self::assertArrayNotHasKey('Retry-After', $mapped->getHeaders(), 'Nothing is retry-safe: no Retry-After.');
+        self::assertSame('CONFLICT_002', $mapped->getHeaders()['X-Conflict-Code']);
         self::assertSame(TransientFailureExceptionListener::COMMITTED_DETAIL, $mapped->getMessage());
 
         $event = $this->event($committed);
@@ -99,7 +103,7 @@ final class TransientFailureExceptionListenerTest extends TestCase
         $mapped = $event->getThrowable();
         self::assertInstanceOf(UnavailableResponseException::class, $mapped);
         self::assertSame('CONFLICT_002', $mapped->errorCode());
-        self::assertSame([], $mapped->getHeaders());
+        self::assertArrayNotHasKey('Retry-After', $mapped->getHeaders());
 
         $event = $this->event($committed);
         (new TransientFailureExceptionListener(format: TransientFailureExceptionListener::FORMAT_PROBLEM_JSON))->onKernelException($event);
@@ -125,7 +129,7 @@ final class TransientFailureExceptionListenerTest extends TestCase
         $mapped = $event->getThrowable();
         self::assertInstanceOf(ConflictResponseException::class, $mapped);
         self::assertSame('CONFLICT_002', $mapped->errorCode());
-        self::assertSame([], $mapped->getHeaders());
+        self::assertArrayNotHasKey('Retry-After', $mapped->getHeaders());
     }
 
     public function testUniqueViolationAndLostConnectionAreNotConflicts(): void
@@ -167,19 +171,98 @@ final class TransientFailureExceptionListenerTest extends TestCase
         );
     }
 
+    /**
+     * Audit TJ DD-1: a HandlerFailedException that carries a completed handler, or a committed ConcurrencyConflict among
+     * what it wraps, may have committed work: CONFLICT_002, no Retry-After, in every format and status.
+     *
+     * @return iterable<string, array{callable(): Throwable, string, bool}>
+     */
+    public static function messengerCases(): iterable
+    {
+        $driver = static fn (): DeadlockException => new DeadlockException(new class('Deadlock found', 1213) extends Exception implements DriverExceptionInterface {
+            public function getSQLState(): string
+            {
+                return '40001';
+            }
+        }, null);
+        $tsf       = static fn (): TransientStorageFailure => new TransientStorageFailure(null, 'x', $driver());
+        $committed = static fn (): ConcurrencyConflict => new ConcurrencyConflict(3, TransactionKind::Deadlock, 1, $driver(), true);
+        $plain     = static fn (): Envelope => new Envelope(new stdClass());
+        $handled   = static fn (): Envelope => (new Envelope(new stdClass()))->with(new HandledStamp('ok', 'App\\First::__invoke'));
+
+        yield 'HFE[TSF] without a completed handler' => [static fn (): Throwable => new HandlerFailedException($plain(), [$tsf()]), 'CONFLICT_001', true];
+        yield 'HFE[TSF] after a completed handler' => [static fn (): Throwable => new HandlerFailedException($handled(), [$tsf()]), 'CONFLICT_002', false];
+        yield 'HFE[deadlock, committed conflict]' => [static fn (): Throwable => new HandlerFailedException($plain(), ['a' => $driver(), 'b' => $committed()]), 'CONFLICT_002', false];
+        yield 'HFE[TSF, committed conflict]' => [static fn (): Throwable => new HandlerFailedException($plain(), ['a' => $tsf(), 'b' => $committed()]), 'CONFLICT_002', false];
+        yield 'HFE[committed conflict] after a completed handler' => [static fn (): Throwable => new HandlerFailedException($handled(), [$committed()]), 'CONFLICT_002', false];
+    }
+
+    /**
+     * @param callable(): Throwable $failure
+     */
+    #[DataProvider('messengerCases')]
+    public function testWrappedFailuresGetTheRightCodeInEveryFormatAndStatus(callable $failure, string $code, bool $retrySafe): void
+    {
+        foreach ([409, 503] as $status) {
+            $event = $this->event($failure());
+            (new TransientFailureExceptionListener(conflictStatus: $status))->onKernelException($event);
+            $mapped = $event->getThrowable();
+            self::assertInstanceOf(HasErrorCodeInterface::class, $mapped);
+            self::assertInstanceOf(HttpExceptionInterface::class, $mapped);
+            self::assertSame($status, $mapped->getStatusCode());
+            self::assertSame($code, $mapped->errorCode());
+            self::assertSame($code, $mapped->getHeaders()['X-Conflict-Code']);
+            self::assertSame($retrySafe, isset($mapped->getHeaders()['Retry-After']));
+
+            $event = $this->event($failure());
+            (new TransientFailureExceptionListener(format: TransientFailureExceptionListener::FORMAT_PROBLEM_JSON, conflictStatus: $status))->onKernelException($event);
+            $response = $event->getResponse();
+            self::assertNotNull($response);
+            self::assertSame($status, $response->getStatusCode());
+            self::assertSame($code, $response->headers->get('X-Conflict-Code'));
+            self::assertSame($retrySafe, $response->headers->has('Retry-After'));
+            self::assertSame($code, json_decode((string) $response->getContent(), true)['code']);
+        }
+    }
+
+    /**
+     * Audit TJ DD-2: X-Conflict-Code carries CONFLICT_001 / CONFLICT_002 only, never the domain code.
+     */
+    public function testConflictCodeHeaderIsNeverSentForADomainConflict(): void
+    {
+        $event = $this->event(new OptimisticLockException('v', null));
+        (new TransientFailureExceptionListener(conflictExceptions: [OptimisticLockException::class]))->onKernelException($event);
+        $mapped = $event->getThrowable();
+        self::assertInstanceOf(HttpExceptionInterface::class, $mapped);
+        self::assertArrayNotHasKey('X-Conflict-Code', $mapped->getHeaders());
+
+        $event = $this->event(new OptimisticLockException('v', null));
+        (new TransientFailureExceptionListener(conflictExceptions: [OptimisticLockException::class], format: TransientFailureExceptionListener::FORMAT_PROBLEM_JSON))->onKernelException($event);
+        self::assertFalse($event->getResponse()?->headers->has('X-Conflict-Code'));
+    }
+
+    public function testDeadlockCarriesTheConflictCodeHeader(): void
+    {
+        $event = $this->event($this->deadlock());
+        (new TransientFailureExceptionListener())->onKernelException($event);
+        $mapped = $event->getThrowable();
+        self::assertInstanceOf(HttpExceptionInterface::class, $mapped);
+        self::assertSame('CONFLICT_001', $mapped->getHeaders()['X-Conflict-Code']);
+    }
+
     public function testTransientStorageFailureHintWins(): void
     {
         $event = $this->event(new LogicException('wrapper', 0, new TransientStorageFailure(9)));
         (new TransientFailureExceptionListener(retryAfterSeconds: 1))->onKernelException($event);
         $mapped = $event->getThrowable();
         self::assertInstanceOf(HttpExceptionInterface::class, $mapped);
-        self::assertSame(['Retry-After' => '9'], $mapped->getHeaders());
+        self::assertSame('9', $mapped->getHeaders()['Retry-After']);
 
         $event = $this->event(new TransientStorageFailure());
         (new TransientFailureExceptionListener(retryAfterSeconds: 2))->onKernelException($event);
         $mapped = $event->getThrowable();
         self::assertInstanceOf(HttpExceptionInterface::class, $mapped);
-        self::assertSame(['Retry-After' => '2'], $mapped->getHeaders(), 'No hint: the configured value.');
+        self::assertSame('2', $mapped->getHeaders()['Retry-After'], 'No hint: the configured value.');
     }
 
     public function testFailuresInsideAHandlerFailedExceptionAreMapped(): void
@@ -189,13 +272,13 @@ final class TransientFailureExceptionListenerTest extends TestCase
         $mapped = $event->getThrowable();
         self::assertInstanceOf(HttpExceptionInterface::class, $mapped);
         self::assertSame(409, $mapped->getStatusCode());
-        self::assertSame(['Retry-After' => '2'], $mapped->getHeaders());
+        self::assertSame('2', $mapped->getHeaders()['Retry-After']);
 
         $event = $this->event(new HandlerFailedException(new Envelope(new stdClass()), ['a' => new LogicException('bug'), 'b' => new TransientStorageFailure(8)]));
         (new TransientFailureExceptionListener(retryAfterSeconds: 2))->onKernelException($event);
         $mapped = $event->getThrowable();
         self::assertInstanceOf(HttpExceptionInterface::class, $mapped);
-        self::assertSame(['Retry-After' => '8'], $mapped->getHeaders(), 'Any TransientStorageFailure answers 409 with its hint, as in 3.0.');
+        self::assertSame('8', $mapped->getHeaders()['Retry-After'], 'Any TransientStorageFailure answers 409 with its hint, as in 3.0.');
 
         $event = $this->event(new HandlerFailedException(new Envelope(new stdClass()), ['a' => new OptimisticLockException('stale', null), 'b' => new UniqueConstraintViolationException($this->driverError(1062, '23000'), null)]));
         (new TransientFailureExceptionListener(conflictExceptions: [OptimisticLockException::class, UniqueConstraintViolationException::class]))->onKernelException($event);
