@@ -9,7 +9,7 @@ dc = $(SHELL) -c '$(COMPOSE_BIN) $(1)'
 COMPOSE := $(COMPOSE_BIN)
 SERVICE_PHP := php
 
-.PHONY: help up down build install shell logs test test-coverage cache-clear update-bundle ensure-up verify schema-update restart
+.PHONY: help up down build install shell logs test test-coverage cache-clear update-bundle ensure-up verify schema-update restart test-e2e
 
 help:
 	@echo "Doctrine Deadlock Retry Bundle - Symfony 8.0 Demo"
@@ -105,6 +105,23 @@ verify:
 	$(call dc,exec -T php php bin/console doctrine:schema:update --force --no-interaction) 2>/dev/null || true; \
 	code=$$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:$$port 2>/dev/null || echo "000"); \
 	if [ "$$code" = "200" ]; then echo "OK (HTTP $$code)"; else echo "Failed (HTTP $$code)"; exit 1; fi
+
+# REQ-DEMO-013: Playwright e2e of the demo in UiKit's demo platform shell (official Playwright image; the tag follows
+# the exact @playwright/test version pinned in e2e/package.json).
+PLAYWRIGHT_VERSION := $(shell sed -n 's/.*"@playwright\/test": "\([0-9.]*\)".*/\1/p' e2e/package.json)
+PLAYWRIGHT_IMAGE ?= mcr.microsoft.com/playwright:v$(PLAYWRIGHT_VERSION)-jammy
+
+test-e2e:
+	@if [ ! -f .env ]; then cp .env.example .env 2>/dev/null || true; fi
+	@mkdir -p e2e/node_modules
+	@port=$$(grep '^PORT=' .env 2>/dev/null | cut -d= -f2 | tr -d '\r'); \
+	[ -z "$$port" ] && port=$$(grep '^PORT=' .env.example 2>/dev/null | cut -d= -f2 | tr -d '\r'); \
+	port=$${port:-8018}; \
+	docker run --rm --network host \
+		-v "$(CURDIR)/e2e:/e2e" -w /e2e \
+		-e DEMO_BASE_URL=http://127.0.0.1:$$port \
+		$(PLAYWRIGHT_IMAGE) \
+		bash -lc 'npm ci --no-fund --no-audit && npx playwright test --project=chromium'
 
 # REQ-MAKE-008: update-deps (REQ-MAKE-008)
 BUNDLE_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../..)
