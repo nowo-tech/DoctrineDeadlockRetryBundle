@@ -10,51 +10,42 @@
 {% endblock %}
 
 {% block body %}
-    <section class="nowo-ui-card">
-        <div class="nowo-ui-card__header">
-            <h2 class="nowo-ui-card__title">Flush with retry <span class="nowo-ui-badge nowo-ui-badge--info">{{ version_badge }}</span></h2>
-        </div>
-        <div class="nowo-ui-card__body">
-            <p>Each page load persists a <code class="nowo-ui-code">DemoNote</code> and calls <code class="nowo-ui-code">DeadlockRetryService::flush()</code> (default profile).</p>
+    {% embed '@NowoUiKit/demo_platform/_section.html.twig' with {title: 'Flush with retry', intro: 'Each page load persists a DemoNote and calls DeadlockRetryService::flush() (default profile).', kind: 'table'} %}
+        {% block section_actions %}<span class="nowo-ui-badge nowo-ui-badge--info">{{ version_badge }}</span>{% endblock %}
+        {% block section_body %}
             <table class="nowo-ui-data-table">
                 <tbody>
                     <tr><th scope="row">Latest saved</th><td><code class="nowo-ui-code">#{{ latest_note.id }} — {{ latest_note.title }}</code></td></tr>
                     <tr><th scope="row">Configured profiles</th><td>{{ profiles|join(', ') }}</td></tr>
                 </tbody>
             </table>
-        </div>
-    </section>
+        {% endblock %}
+    {% endembed %}
 
-    <section class="nowo-ui-card">
-        <div class="nowo-ui-card__header"><h2 class="nowo-ui-card__title">Recent notes</h2></div>
-        <div class="nowo-ui-card__body">
-            {% if notes is empty %}
-                <p class="nowo-ui-muted">No notes yet.</p>
-            {% else %}
-                <table class="nowo-ui-data-table">
-                    <thead>
-                        <tr><th scope="col">ID</th><th scope="col">Title</th><th scope="col">Created</th></tr>
-                    </thead>
-                    <tbody>
-                        {% for note in notes %}
-                        <tr>
-                            <td>{{ note.id }}</td>
-                            <td>{{ note.title }}</td>
-                            <td>{{ note.createdAt|date('Y-m-d H:i:s') }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            {% endif %}
-        </div>
-    </section>
+    {% embed '@NowoUiKit/demo_platform/_section.html.twig' with {title: 'Recent notes', kind: 'table', empty: notes is empty, state_message: 'No notes yet.'} %}
+        {% block section_body %}
+            <table class="nowo-ui-data-table">
+                <thead>
+                    <tr><th scope="col">ID</th><th scope="col">Title</th><th scope="col" class="nowo-ui-cell--date">Created</th></tr>
+                </thead>
+                <tbody>
+                    {% for note in notes %}
+                    <tr>
+                        <td>{{ note.id }}</td>
+                        <td>{{ note.title }}</td>
+                        <td class="nowo-ui-cell--date"><time datetime="{{ note.createdAt|date('c') }}">{{ note.createdAt|date('Y-m-d H:i:s') }}</time></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% endblock %}
+    {% endembed %}
 
-    <section class="nowo-ui-card">
-        <div class="nowo-ui-card__header"><h2 class="nowo-ui-card__title">Usage in your app</h2></div>
-        <div class="nowo-ui-card__body">
-<pre class="nowo-ui-code-block"><code>$this->entityManager->persist($entity);
+    {% embed '@NowoUiKit/demo_platform/_section.html.twig' with {title: 'Usage in your app', kind: 'content'} %}
+        {% block section_body %}
+<pre class="nowo-ui-code-block" tabindex="0"><code>$this->entityManager->persist($entity);
 $this->deadlockRetry->flush();
 $this->deadlockRetry->flush('batch');</code></pre>
-        </div>
-    </section>
+        {% endblock %}
+    {% endembed %}
 {% endblock %}
