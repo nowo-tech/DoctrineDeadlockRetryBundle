@@ -36,6 +36,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- PHP 8.6 and Symfony 8.2 support in CI (both stable, no allowed failures): `composer.json` allows PHP below 8.7 (was below 8.6) and a forward-compatibility workflow runs the suite on PHP 8.6 and on Symfony 8.2.
 - demo: the demo runs inside UiKit's demo platform shell (`@NowoUiKit/demo_platform/layout.html.twig`, UiKit ^2.60): shared top bar, aside navigation and section cards, no demo masthead markup; the Web Debug Toolbar and the CDN hot-reload scripts are off in the demo and its README screenshots. Demo only, no release.
 - CI: new `deps-floor` job (as in BreadcrumbKit). It checks that the demo lock installs every nowo-tech requirement of the bundle (`.scripts/check-demo-lock.py`), then downgrades nowo-tech/transaction-* to the lowest versions composer.json allows (`composer update 'nowo-tech/transaction-*' --prefer-lowest`) and runs PHPStan and the tests there, so a call to a newer API than the constraint allows fails the pull request.
 - Demo: `make update-bundle` runs `composer update nowo-tech/doctrine-deadlock-retry-bundle -w`, so the bundle's new or raised requirements reach the demo lock too.
